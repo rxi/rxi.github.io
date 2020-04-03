@@ -28,6 +28,8 @@ document.body.onload = function() {
  Cached Software Rendering
 </h1><div class="date">
  2020.04.02
+</div><div class="date_updated"> updated:
+ 2020.04.03
 </div>
 <div class="sections"></div>
 
@@ -137,7 +139,7 @@ the draw commands again, for every command where the rect overlaps that cell we
 perform the command&apos;s draw operation:
 <pre>for (int y = 0; y &lt; CELLS_Y; y++) {
   for (int x = 0; x &lt; CELLS_X; x++) {
-    int idx = x + y * CELLS_Y;
+    int idx = x + y * CELLS_X;
     if (cells[idx] != cells_prev[idx]) {
       Rect rect = { x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE };
       redraw_region(rect);
