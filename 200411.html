@@ -1,0 +1,182 @@
+<html><head><style>.logo { width: 160px; height: 160px; background: #e81633 url("logo.png"); background-size: 160px 160px; display: block; border: 0; } .logo:hover { padding: 0; margin: 0; background: #000 url("logo.png"); background-size: 160px 160px; filter: grayscale(100%) contrast(180%); } .date { margin-bottom: 30px; margin-top: -8px; display: inline-block; } .date_updated { display:inline-block; padding-left: 30px; font-style: italic; } body { margin: 60px auto; margin-bottom: 160px; max-width:750px; line-height:1.6; font-family: 'Inconsolata', monospace; color:#000; padding:0 30px; } pre, blockquote { font-family: 'Inconsolata', monospace; border-left: 1px solid #000; padding: 6px 18px; } code { font-family: 'Inconsolata', monospace; padding: 1px 4px; border: 1px solid #000; } h1,h2,h3 { line-height:1.2; padding-top: 18px; margin-bottom: 10px; font-weight: normal; } a { color: #000; text-decoration: none; border-bottom: 1px solid #000; } a:hover { padding: 4px; margin: -4px; color: #fff; background: #000; text-decoration: none; } ol { counter-reset: ol-counter; list-style: none; margin: 0; padding: 0; } ol li:before { counter-increment: ol-counter; content: "0" counter(ol-counter) ". "; } ul { list-style: none; margin: 0; padding-left: 19px; } ul li:before { content: "- "; margin-left: -19px; width: 19px; display: inline-block; } img { margin: 0 auto; display: block; } 
+</style></head><body><meta name="viewport" content="width=device-width, initial-scale=0.45">
+<title>rxi</title>
+
+<script>
+document.body.onload = function() {
+  var title = document.getElementsByClassName("title")[0];
+  if (title) { document.title = title.innerText; }
+
+  var sections = document.getElementsByClassName("sections")[0];
+  if (sections) {
+    var elems = document.getElementsByTagName("h2");
+    var html = "<ol>";
+    for (var e of elems) {
+      e.id = e.innerText.replace(" ", "-");
+      html += "<li>";
+      html += "<a href='#" + e.id + "'>" + e.innerText + "</a>";
+    }
+    html += "</ol>";
+    sections.innerHTML = html;
+  }
+};
+</script>
+
+<a class="logo" href="index.html"></a>
+
+<h1 class="title">
+ Microui v2: An Implementation Overview
+</h1><div class="date">
+ 2020.04.11
+</div>
+<div class="sections"></div>
+
+
+<p><h2>Introduction
+</h2>This write-up outlines some of the implementation details of the
+<a href="https://github.com/rxi/microui">microui</a> library. At the time
+of writing this microui is <a href="https://github.com/rxi/microui/tree/9d61da3">version 2.01</a>.
+<p>Microui is a <em>tiny</em> <a href="https://www.youtube.com/watch?v=Z1qyvQsjK5Y">immediate mode</a>
+UI library written in portable ANSI C — the library itself doesn&apos;t do any
+drawing but instead takes user input events (eg. mouse clicks and key
+presses), processes the UI and generates an iterable list of draw commands
+(eg. &quot;draw rectangle&quot;, &quot;draw text&quot;). The library&apos;s goals are as follows:
+<p><ul><li>small (<code>~1110 sloc</code>)
+<li>simply implemented
+<li>easy to use
+<li>easy to extend with custom controls
+<li>operating within a fixed memory region (never calls <code>malloc</code> or friends)
+</ul><p>Due to these goals, some of the choices made during its implementation differ
+from other immediate mode libraries, and thus the project might be less useful
+for certain scenarios. Generally the library is a good choice if:
+<p><ul><li>you want something small without too many built-in controls besides the basics,
+eg. you don&apos;t need a color picker
+<li>you&apos;re planning to use a lot of custom controls or are aiming for a specific
+visual style and are happy to implement your own custom controls
+<li>you&apos;re targeting a less-common platform which uses non-standard or
+custom-written rendering, eg. MS-DOS
+<li>you&apos;re targeting a platform where heap allocations might cause an issue, eg.
+a long running process on an embedded device
+<li>you want something lightweight to use as a base for a heavier UI library
+</ul><p><p><h2>Windows And Controls
+</h2>At the beginning of each frame microui takes user input — this is done by
+passing input events to the <code>mu_input...</code> functions. After handling input
+<code>mu_begin</code> is called and the UI itself is processed, all controls must exist
+within a window, thus the <code>mu_begin_window</code> function must be the next thing
+called.
+<p>Microui uses a number of stacks internally:
+<ul><li><code>container_stack</code>: stack of all current containers (windows and panels)
+<li><code>clip_stack</code>: current &quot;clipping&quot; rectangle — when a clipping rectangle is
+pushed it is intersected with the last rectangle on this stack
+<li><code>id_stack</code>: when a control id is generated (<code>mu_get_id</code>) the id at the top of
+this stack is used as its initial hash. An id in microui is a 32bit unsigned
+integer
+<li><code>layout_stack</code>: the current state of the UI layout, eg. where the next control
+should be placed, current indentation level, dimensions of the current layout
+region
+</ul><p>When we call <code>mu_begin_window</code> an id is generated from the window title, the
+<code>mu_Container</code> for that window is pushed to the <code>container_stack</code>, the generated
+id is pushed to the <code>id_stack</code>, and a new <code>mu_Layout</code> is initialised to the size
+of the windows body and pushed to the <code>layout_stack</code>.
+<p>Processing a button in the UI using <code>mu_button</code>, the function would first
+advance the layout system to get a rectangle representing where it will be
+placed (<code>mu_layout_next</code>), generate a unique id from the buttons name
+(<code>mu_get_id</code>), and update the <code>focus</code> and <code>hover</code> ids of the context based on
+the mouse state, window states and currently-clipped region
+(<code>mu_update_control</code>) before finally handling any control-specific behaviour and
+pushing draw commands.
+<p><p><h2>Hover State
+</h2>To determine whether a control is currently being hovered over by the user we
+first check to make sure the control&apos;s rectangle overlaps the mouse position, we
+then iterate down from the top of the <code>container_stack</code> to find the
+root-container we&apos;re currently in (that is, a container which is a window rather
+than a panel) and make sure that the root container matches the context&apos;s
+<code>hover_root</code> pointer, indicating that it is the root-container which
+the mouse is currently over; this is done such that a window above the button
+will prevent that button from being considered &quot;hovered&quot; over.
+<p>As the windows aren&apos;t necessarily processed in the order they will eventually
+appear, the <code>hover_root</code> value is set each frame: the current frame uses
+the previous frame&apos;s hovered-over-window and thus always lags one frame behind.
+In practise this is effectively unnoticeable.
+<p>This has to be done as we won&apos;t know the state of all the windows until the
+frame is finished, in fact we won&apos;t even know which windows <em>exist</em> until we&apos;ve
+finished processing the UI for a given frame.
+<p><p><h2>Z-ordering In A Fixed-Sized Buffer
+</h2>As microui uses a fixed sized region of memory, a <em>single</em> command list, and
+allows the windows to be processed in any order regardless of their z-order, a
+unique approach is taken to assure that when the user iterates the draw
+commands in the command list, that they are in bottom-to-top order.
+<p>Each time <code>mu_window_begin</code> is called a pointer to the current position in the
+command list is stored by the window, and a &quot;jump&quot; command is pushed to the
+command list with a NULL pointer. When <code>mu_window_end</code> is called another jump
+command is pushed to the command list with a NULL pointer; the initially pushed
+jump command&apos;s pointer is then set to the now-current position of the command
+list, that is, the position where all the window&apos;s commands end.
+<p>At the end of the frame all the windows from that frame are sorted by their
+<code>zindex</code> and have the jump command&apos;s pointer set to the beginning of the
+window-above-it&apos;s commands. The first jump command in the command list is set to
+go to the lowest window and the top-most window&apos;s jump command is set to go to
+the end of the command list.
+<p>Thus if we processed a frame as the following:
+<pre>begin_main_window
+  do_some_ui_stuff
+  begin_popup_window
+    do_some_popup_ui_stuff
+  end_popup_window
+  do_some_ui_stuff
+end_main_window
+</pre><p>The resultant command list would exist in memory as the following blocks, with
+the jump commands and their destinations shown as the lines connecting the
+blocks:
+<p><img src="data:image;base64, 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6d05QY5yWi5JWoqukuH6UPrZDm/p3TlBjnJaLklaiq6S4fpQ+tkOb+ndOUGOclouSVqKrpLh+lD62Q5v6d05QY5yWi5JWoqukuH6UPrZDm/p3TlBjnJaLklaiq6S4fpQ+tkOb+ndOUGOclouSVqKrpLh+lD62Q5v6d05QW5H0lIoDiqKA47iBLkdSUuhOKgoDjiKE+R2JC2F4qAStqMfOSbuKZ8i3EpOXz5eV8kgLwHgeooDAKCiOAAAKooDgK75TwE4n+IAoGuKA86nOADomuKA8ykOALqmOOB8igOArikOOJ/iAKBrigPOpzgA6JrigPMpDgC6pjjgfIoDgK4pDjif4gCga4oDzqc4AOia4oDzKQ4AuqY44HyKA4CuKQ44n+IAoGuKA86nOADomuKA8ykOALqmOOB8igOArikOOJ/iAKBrigPOpzgA6JrigPMpDgC6pjjgfIoDgK4pDjif4gCga4oDzqc4AOia4oDzKQ4AuqY44HyKA4CuKQ44n+IAoGuKA86nOADomuKA8ykOALqmOOB8igOArikOOJ/iAKBr4TMN58v51wHFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQBQURwAABXFAQAw8b///R8r32L0I/JXPwAAAABJRU5ErkJggg=="/>
+<p>The jump commands are handled internally by microui inside the <code>mu_next_command</code>
+function, and are thus something the user doesn&apos;t need to worry about in normal
+usage.
+<p>The approach of having a single command list for all windows allows us to have
+much simpler code as opposed to an approach where we would have a command list
+per-window. We only need to keep track of and manage a single buffer which
+everything is pushed to linearly vs having multiple buffers all of which would
+be partially filled with commands.
+<p>An additional perk of the single command list is that at the end of the frame
+the command list itself can be hashed and compared with the previous frame&apos;s
+hash to see if anything on screen has actually changed. If nothing has changed
+then drawing can be skipped for that frame.
+<pre>mu_get_id(ctx, &amp;ctx-&gt;command_list, sizeof(ctx-&gt;command_list))
+</pre><p><p><h2>A Forgetful UI
+</h2>As with all immediate mode UI some state still needs to be retained — eg.
+scroll bars, content sizes, window position/sizes and tree-node states.
+Typically this is done by mapping the id for a given control or window to its
+state internally, this is what microui does.
+<p>An issue arises then that given the nature of immediate mode UI we never know
+for sure if a control or window is no longer in use, thus how do we know when
+we&apos;d be able to free the state for that control or window?
+<p>Microui employs the use of internal fixed-sized pools to store this state, and
+to solve the issue of knowing which state in the pool it can stop retaining
+employs a &quot;forgetful&quot; approach: for each piece of state (eg, a window&apos;s
+container) that&apos;s stored internally, a <code>last_updated</code> value is kept which
+represents the last frame in which the given window or control was processed in
+the UI. When we begin a window which has no state stored internally and we have
+no remaining slots in the pool, we simply find the least-recently-updated state
+and reinitialise this slot, claiming it for the current window.
+<p>A disadvantage to this approach is that we have a hard limit on the amount of
+windows we can have active at the same time, or visible tree-nodes in a
+non-default position. Microui uses a pool of <code>48</code> window containers thus we can
+only display 48 windows or panels at a time, for context this is what 48 windows
+actually looks like:
+<p><img src="data:image;base64, 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"/>
+<p>In normal usage it&apos;s hard to imagine this being an issue, that being said the
+pool&apos;s upper limit can be trivially increased by changing a single constant in
+the code if needs be.
+<p>The consequence of a piece of state being &quot;reclaimed&quot; is simply that that window
+or control is reset to its default value. In typical usage the reclaiming ends
+up effectively unnoticeable as generally transient popup windows or tree-node
+states which haven&apos;t been interacted with for a while are those reset to their
+default value if a lot of other activity has occurred in the time since. It&apos;s
+not hard to imagine that the UI would be less &quot;forgetful&quot; than a typical user,
+and thus the resetting of &quot;old&quot; state would go unnoticed.
+<p>One additional perk of this approach is that because all state exists in fixed
+sized buffers we can store the current state of the UI to a binary file by
+simply dumping the memory of the state pools (along with the context&apos;s
+<code>last_zindex</code> and <code>frame</code>). When the application next starts this file can be
+loaded to restore the state of the UI.
+<p></body></html>
