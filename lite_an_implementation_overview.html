@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Lite: An Implementation Overview | rxi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=0.45">
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
+  <body>
+    <a class="logo" href="index.html"></a>
+    <h1 class='title'>Lite: An Implementation Overview</h1>
+<div class='date'>2020.06.04</div>
+<div class='sections'><div class='section-item'><a href='#introduction'>Introduction</a></div><div class='section-item'><a href='#overview'>Overview</a></div><div class='section-item'><a href='#core'>Core</a></div><div class='section-item'><a href='#threads'>Threads</a></div><div class='section-item'><a href='#documents'>Documents</a></div><div class='section-item'><a href='#syntax_highlighting'>Syntax Highlighting</a></div><div class='section-item'><a href='#user_interface'>User Interface</a></div><div class='section-item'><a href='#plugins'>Plugins</a></div></div>
+
+<h2 id='introduction' class='section-header'>Introduction</h2>
+<p>
+  This write-up outlines some of the implementation details of the
+  <a class='link' href='http://github.com/rxi/lite'> lite</a> text editor. At the time of writing
+  this lite is version <a class='link' href='https://github.com/rxi/lite/releases/tag/v1.06'>
+  1.06</a>.
+</p>
+
+<h2 id='overview' class='section-header'>Overview</h2>
+<p>
+  Lite is written mainly in Lua (5.2) with the lowest level parts written in C.
+  It is written with the intent of being lightweight, easy on the eyes,
+  responsive and trivial to modify and extend. To achieve this the core
+  implementation aims to be <em>as simple as possible</em>: complexity is only
+  brought in when it&#39;s proven the simplest method isn&#39;t practical.
+</p>
+
+
+<h2 id='core' class='section-header'>Core</h2>
+<p>
+  The core of lite implements documents, syntax highlighting, a
+  cooperative-threading system, basic logging and the general ui layout system.
+  Overall the core is in charge of handling user input, running per-frame tasks,
+  and rendering the resultant frame early enough to meet the frames-per-second
+  specified in <code>config.fps</code>.
+</p>
+
+
+<h2 id='threads' class='section-header'>Threads</h2>
+<p>
+  Lite implements a cooperative-threading system where by background tasks —
+  such as full-document syntax highlighting and updating the internal list of
+  project files — can be performed incrementally. Cooperative threads in lite are
+  implemented using lua&#39;s coroutines and are referred internally as simply
+  <code>threads</code>.
+</p>
+<p>
+  A thread can be started by using the <code>core.add_thread()</code> function, this
+  function takes a function, and an optional object which is used as a weak
+  reference to that thread, eg. if a doc is passed as the weak reference, when
+  that doc is garbage collected the coinciding thread will also cease to exist.
+</p>
+<p>
+  As threads in lite are cooperative they&#39;re expected to regularly call
+  <code>couroutine.yield()</code>. Typically this yielding is done every <code>n</code>
+  lines for line-based tasks (eg. full-project search, syntax highlighting).
+  When a thread yields the core will continue to render the frame, or — if there is
+  still enough time left in the current frame — pass control to another thread.
+  Threads can also pass a numerical argument to <code>coroutine.yield()</code> to wait
+  for the number of seconds specified:
+</p>
+<pre class='codeblock'>
+core.add_thread(function()
+  -- print &quot;hello world&quot; every 10 seconds
+  while true do
+    print(&quot;hello world&quot;)
+    coroutine.yield(10)
+  end
+end
+</pre>
+<p>
+  Practical usage examples of lite&#39;s threading can be seen in the core&#39;s project
+  file scanning (<code>core/init.lua</code>) and the incremental syntax highlighting
+  (<code>core/doc/highlighter.lua</code>).
+</p>
+
+<h2 id='documents' class='section-header'>Documents</h2>
+<p>
+  All loaded text files in lite are stored in <code>Docs</code>. A doc keeps a table
+  of a text file&#39;s lines (<code>Doc.lines</code>), undo and redo
+  state, the current syntax (<code>Doc.syntax</code>), syntax highlighting state
+  (<code>Doc.highlighter</code>) and caret/selection state. Docs are opened using the
+  <code>core.open_doc()</code> function; if the function is called and a doc of that
+  filename is already open then the existing doc is returned such that
+  more-than-one doc representing the same file should never be present.
+</p>
+<p>
+  Lite stores all the open docs in the <code>core.docs</code> table; each frame lite
+  checks the number of views referencing each doc and releases those with zero
+  references — this is an instance of lite favoring polling over callbacks or
+  event listeners. This approach is done throughout lite; in avoiding event
+  listeners we also avoid having to manage unregistering event handlers or worry
+  about having those which are never unregistered through error. This leads to
+  much simpler, less error-prone code.
+</p>
+<h2 id='syntax_highlighting' class='section-header'>Syntax Highlighting</h2>
+<p>
+  Lite implements a simple syntax highlighter based around lua patterns, this is
+  split up into 3 parts:
+</p>
+<ul class='list'>
+  <li class='list-item'><code>core.syntax</code>: stores language syntax specifications</li>
+  <li class='list-item'><code>core.tokenizer</code>: converts text into table of tokens using a given syntax</li>
+  <li class='list-item'><code>core.doc.highlighter</code>: stores token state for lines of a doc and handles
+         full-document incremental highlighting</li>
+</ul>
+<p>
+  A language syntax is stored as a table of lua patterns mapped to to their
+  resultant token type (<code>.patterns</code>) and a table of symbols mapped to their
+  token type (<code>.symbols</code>). Patterns in the pattern table can also be a
+  range of the following format:
+</p>
+<pre class='codeblock'>
+{ range_start_pattern, range_end_pattern [, escape_character] }
+</pre>
+<p>
+  Ranges can be used for matching strings:
+</p>
+<pre class='codeblock'>
+{ &#39;&quot;&#39;, &#39;&quot;&#39;, &#39;\\&#39; }
+</pre>
+<p>
+  An example of syntax specifications can be seen in any of the
+  <code>data/plugins/language_*.lua</code> files.
+</p>
+<p>
+  The highlighter persists range state between lines by storing the pattern
+  table index of the current range. As the highlighter works in increments of
+  lines, ranges are useful for multi-line comments or strings which a single
+  pattern would fail on.
+</p>
+<p>
+  When the <code>tokenizer.tokenize()</code> function is called it iterates the syntax&#39;s
+  pattern table from top to bottom, such that patterns higher up in the table
+  take precedence. When it matches a pattern it pushes the token to the
+  resultant table, if the token&#39;s content matches any of the keys in the
+  <code>.symbols</code> table that value is used instead of the matched token value;
+  this acts both as a more convenient way of specifying keywords as well as an
+  optimization as the tokenizer can attempt matching fewer patterns, even if
+  there are many keywords specified. The function returns a <code>state</code> integer
+  which is used to indicate which pattern range it is currently inside if it is
+  inside any.
+</p>
+<p>
+  <code>core.doc.highlighter</code> is in charge of providing tokenized lines when
+  displaying a document; each doc stores a <code>Highlighter</code> object. The
+  highlighter assures highlighting information for any line that is requested
+  is <em>always</em> available, even if the full-document incremental highlighter
+  has not yet reached that line.
+</p>
+<p>
+  When a request is made to the highlighter for a specific line the highlighter
+  first checks its cache for the line; if it does not have the line cached —
+  or, if the line&#39;s text has changed since its cached version — it immediately
+  tokenizes the line, continuing from the tokenizer state left from the
+  previous line. The highlighter&#39;s <code>max_wanted_line</code> field is set to
+  that line&#39;s value if it&#39;s greater than the existing <code>max_wanted_line</code>.
+</p>
+<p>
+  A doc&#39;s highlighter creates a thread when it&#39;s created which it uses to do
+  full-document highlighting starting from its <code>first_invalid_line</code> up
+  until the <code>max_wanted_line</code>. When a change occurs in a document the
+  <code>first_invalid_line</code> is set to the first line of the change if it&#39;s
+  greater than the current <code>first_invalid_line</code>.
+</p>
+<p>
+  This implementation results in the following characteristics:
+</p>
+<ul class='list'>
+  <li class='list-item'>Displayed lines are always syntax highlighted with, at the very
+         least, highlighting which is valid to the current screen&#39;s content</li>
+  <li class='list-item'>Displayed lines are <em>eventually</em> highlighted with
+         full-document aware highlighting</li>
+  <li class='list-item'>The highlighting is performed per-line, and so — with the exception
+         of extremely long lines — can be done incrementally without a
+         negative effect on responsiveness</li>
+  <li class='list-item'>Highlighting is only performed up until the point in the document it
+         is required, for example, up until the last visible line</li>
+</ul>
+
+
+<h2 id='user_interface' class='section-header'>User Interface</h2>
+<p>
+  Each part of lite&#39;s UI is implemented as a <code>View</code>, that is, a document is
+  shown in the UI as a <code>DocView</code>, the status bar at the bottom the
+  <code>StatusView</code> etc. Each view exists within the <code>RootView</code>
+  (<code>core.root_view</code>) which is in charge of calling the <code>:update()</code> and
+  <code>:draw()</code> functions of each view, managing the layout of the
+  views, and routing user input to relevant views.
+</p>
+<p>
+  The rootview is implemented as a binary tree of <code>Nodes</code>. Each node is one
+  of the following types:
+</p>
+<ul class='list'>
+  <li class='list-item'><code>hsplit</code>: Contains two children side-by-side and a divider between them</li>
+  <li class='list-item'><code>vsplit</code>: Contains two children one-above-the-other and a divider between them</li>
+  <li class='list-item'><code>leaf</code>: Contains one or more views, and, if there is more than one
+        view, a tab at the top for each view.</li>
+</ul>
+<p>
+  Each frame the rootview calculates its layout based on the divider position of
+  each split and sets the <code>.size</code> field of each node and view accordingly.
+</p>
+<p>
+  The rootview also has a concept of <em>locked nodes</em>; the size of a locked
+  node is not determined by the divider position but instead is set from the
+  view&#39;s <code>.size</code> field. Locked nodes cannot be resized by the user as
+  normal nodes would be, they cannot be closed and cannot open additional views.
+  The locked-node feature is used for, amongst other things, the status bar at the
+  bottom of the screen which we typically want to be always present and
+  immutable.
+</p>
+<p>
+  lite takes the approach of effectively redrawing <em>everything</em> whenever
+  it needs to redraw <em>anything</em>, this lends itself to simplified UI code.
+  There are no event listeners or callbacks to manage. If something changes the
+  state of the UI (eg. the caret is moved), the <code>core.redraw</code> boolean is set
+  to <code>true</code> to signify that something has changed and the UI is redrawn on
+  that frame. For further simplicity any user input events will also set
+  <code>core.redraw</code>, such that there&#39;s a guarantee any change which resulted from
+  user input will result in the screen contents being updated.
+</p>
+<p>
+  Although the idea of redrawing everything each time may appear wasteful, lite
+  employs a technique where by only regions of the screen which have changed
+  between frames are actually redrawn — these regions can be displayed by calling
+  <code>renderer.show_debug(true)</code>. This technique is implemented on the C level
+  of the code and is invisible to the lua portion which acts as if it&#39;s doing
+  a full redraw each time.
+</p>
+<p>
+  An overview of how this is achieved is detailed in the
+  <a class='link' href='cached_software_rendering.html'> Cached Software Rendering</a> write-up.
+</p>
+
+
+<h2 id='plugins' class='section-header'>Plugins</h2>
+<p>
+  Lite&#39;s plugin system is based around lua&#39;s module system; each plugin is
+  simply a lua module (that is, a single <code>.lua</code> file, or, a directory
+  containing a <code>init.lua</code> file). All modules in the <code>data/plugins</code>
+  directory are automatically loaded when lite starts — this is done after
+  initializing the core and before loading the user and project modules. Thus to
+  install a plugin you simply place the file in the plugins directory; to
+  uninstall a plugin you delete the file.
+</p>
+<p>
+  A specific order of which plugins are loaded is not guaranteed by lite but,
+  as plugins are just regular lua modules, a plugin can simply call <code>require</code>
+  on another plugin if it needs to assure that plugin is loaded before it, or
+  depends on functionality from that plugin.
+</p>
+<p>
+  The lua which plugins are made from and the that which lite is made from are
+  no different, effectively giving plugins the ability to modify lite in almost
+  any way the user sees fit. Instead of implementing an event listener system
+  which would both litter the implementation with code to emit events, as well
+  as limit the places lite can be modified to those which emit these events,
+  lite instead encourages plugins to simply override existing functions
+  directly. For example, if we wanted a plugin to run our <code>build.sh</code> script
+  each time a document is saved it could be implemented as such:
+</p>
+<pre class='codeblock'>
+local Doc = require &quot;core.doc&quot;
+
+local save = Doc.save
+function Doc:save(...)
+  save(self, ...)
+  system.exec(&quot;./build.sh&quot;)
+end
+</pre>
+<p>
+  Plugins are free to override drawing functions (for drawing lines under
+  words), keymap handling (to implement modal editing), create their own views
+  (for project-wide text search) or any other part of lite.
+</p>
+<p>
+  A plugin is never expected to be able to unload itself, instead assuming that
+  lite is restarted for cases where the user wants to remove or add a plugin.
+  No care has to be taken to properly keep track of what changes a given
+  plugin has made as those changes will never need to be undone.
+</p>
+<p>
+  Plugins can be downloaded from lite&#39;s
+  <a class='link' href='https://github.com/rxi/lite-plugins'> plugins repo</a>.
+</p>
+
+
+  </body>
+</html>

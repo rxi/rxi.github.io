@@ -1,0 +1,132 @@
+.logo {
+  width: 160px;
+  height: 160px;
+  background: #e81633 url("images/logo.png");
+  background-size: 160px 160px;
+  display: block;
+  border: 0;
+}
+
+.logo:hover {
+  padding: 0;
+  margin: 0;
+  background: #000 url("images/logo.png");
+  background-size: 160px 160px;
+  filter: grayscale(100%) contrast(180%);
+}
+
+.date {
+  margin-bottom: 30px;
+  margin-top: -8px;
+  display: inline-block;
+}
+
+.updated {
+  display:inline-block;
+  font-style: italic;
+}
+.updated:before { content: " ("; }
+.updated:after { content: ")"; }
+
+.posts .post-title:before {
+  content: "- ";
+}
+
+html {
+  overflow-y:scroll;
+}
+
+body {
+  margin: 60px auto;
+  margin-bottom: 160px;
+  max-width:750px;
+  line-height:1.62;
+  font-family: 'Inconsolata', monospace;
+  background: #fff;
+  color:#000;
+  padding:0 30px;
+}
+
+hr {
+  border-top: 1px solid #000;
+}
+
+.codeblock {
+  font-family: 'Inconsolata', monospace;
+  font-weight: bold;
+  padding: 1ch 2ch;
+  /*
+  border-left: 1px solid #000;
+  background: #000;
+  color: #fff;
+  padding: 24px;
+  */
+}
+
+code {
+  font-family: 'Inconsolata', monospace;
+  font-weight: bold;
+}
+
+h1,h2,h3 {
+  line-height:1.2;
+  padding-top: 18px;
+  margin-bottom: 10px;
+  font-weight: normal;
+}
+
+a {
+  color: #000;
+  text-decoration: none;
+  border-bottom: 1px solid #000;
+}
+
+a:hover {
+  padding: 4px;
+  margin: -4px;
+  color: #fff;
+  background: #000;
+  text-decoration: none;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 19px;
+}
+
+ul li:before {
+  content: "- ";
+  margin-left: -2ch;
+  width: 2ch;
+  display: inline-block;
+}
+
+img {
+  margin: 0 auto;
+  display: block;
+}
+
+.sections {
+  counter-reset: ol-counter;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section-item:before {
+  counter-increment: ol-counter;
+  content: "0" counter(ol-counter) ". ";
+}
+
+body::-webkit-scrollbar {
+  width: 1em;
+}
+
+body::-webkit-scrollbar-thumb {
+  border-right: 8px solid #ccc;
+}
+
+body::-webkit-scrollbar-thumb:hover {
+  border-right: 8px solid #aaa;
+}

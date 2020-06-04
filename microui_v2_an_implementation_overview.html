@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Microui v2: An Implementation Overview | rxi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=0.45">
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
+  <body>
+    <a class="logo" href="index.html"></a>
+    <h1 class='title'>Microui v2: An Implementation Overview</h1>
+<div class='date'>2020.04.11</div>
+<div class='sections'><div class='section-item'><a href='#introduction'>Introduction</a></div><div class='section-item'><a href='#windows_and_controls'>Windows And Controls</a></div><div class='section-item'><a href='#hover_state'>Hover State</a></div><div class='section-item'><a href='#z_ordering_in_a_fixed_sized_buffer'>Z-ordering In A Fixed-Sized Buffer</a></div><div class='section-item'><a href='#a_forgetful_ui'>A Forgetful UI</a></div></div>
+
+<h2 id='introduction' class='section-header'>Introduction</h2>
+<p>
+  This write-up outlines some of the implementation details of the
+  <a class='link' href='https://github.com/rxi/microui'> microui</a> library. At the time of writing this
+  microui is <a class='link' href='https://github.com/rxi/microui/tree/9d61da3'> version 2.01</a>
+</p>
+
+<p>
+  Microui is a <em>tiny</em> <a class='link' href='https://www.youtube.com/watch?v=Z1qyvQsjK5Y'>
+  immediate mode</a> UI library written in portable ANSI C — the library itself
+  doesn&#39;t do any drawing but instead takes user input events (eg. mouse clicks
+  and key presses), processes the UI and generates an iterable list of draw
+  commands (eg. &quot;draw rectangle&quot;, &quot;draw text&quot;). The library&#39;s goals are as
+  follows:
+</p>
+
+<ul class='list'>
+  <li class='list-item'>small (<code>~1110 sloc</code>) </li>
+  <li class='list-item'>simply implemented </li>
+  <li class='list-item'>easy to use </li>
+  <li class='list-item'>easy to extend with custom controls </li>
+  <li class='list-item'>operating within a fixed memory region (never calls <code>malloc</code> or friends) </li>
+</ul>
+
+<p>
+  Due to these goals, some of the choices made during its implementation differ
+  from other immediate mode libraries, and thus the project might be less useful
+  for certain scenarios. Generally the library is a good choice if:
+</p>
+
+<ul class='list'>
+  <li class='list-item'>you want something small without too many built-in controls
+         besides the basics, eg. you don&#39;t need a color picker </li>
+  <li class='list-item'>you&#39;re planning to use a lot of custom controls or are aiming for a
+         specific visual style and are happy to implement your own custom
+         controls </li>
+  <li class='list-item'>you&#39;re targeting a less-common platform which uses non-standard or
+         custom-written rendering, eg. MS-DOS </li>
+  <li class='list-item'>you&#39;re targeting a platform where heap allocations might cause
+         an issue, eg. a long running process on an embedded device </li>
+  <li class='list-item'>you want something lightweight to use as a base for a heavier
+         UI library </li>
+</ul>
+
+<h2 id='windows_and_controls' class='section-header'>Windows And Controls</h2>
+<p>
+  At the beginning of each frame microui takes user input — this is done by
+  passing input events to the <code>mu_input...</code> functions. After handling input
+  <code>mu_begin</code> is called and the UI itself is processed, all controls must exist
+  within a window, thus the <code>mu_begin_window</code> function must be the next thing
+  called.
+</p>
+
+<p>
+  Microui uses a number of stacks internally:
+</p>
+<ul class='list'>
+  <li class='list-item'><code>container_stack</code>: stack of all current containers (windows and panels) </li>
+  <li class='list-item'><code>clip_stack</code>: current &quot;clipping&quot; rectangle — when a clipping rectangle is pushed it is intersected with the last rectangle on this stack </li>
+  <li class='list-item'><code>id_stack</code>: when a control id is generated (<code>mu_get_id</code>) the id at the top of this stack is used as its initial hash. An id in microui is a 32bit unsigned integer </li>
+  <li class='list-item'><code>layout_stack</code>: the current state of the UI layout, eg. where the next control should be placed, current indentation level, dimensions of the current layout region </li>
+</ul>
+
+<p>
+  When we call <code>mu_begin_window</code> an id is generated from the window title, the
+  <code>mu_Container</code> for that window is pushed to the <code>container_stack</code>, the generated
+  id is pushed to the <code>id_stack</code>, and a new <code>mu_Layout</code> is initialised to the size
+  of the windows body and pushed to the <code>layout_stack</code>.
+</p>
+
+<p>
+  Processing a button in the UI using <code>mu_button</code>, the function would first
+  advance the layout system to get a rectangle representing where it will be
+  placed (<code>mu_layout_next</code>), generate a unique id from the buttons name
+  (<code>mu_get_id</code>), and update the <code>focus</code> and <code>hover</code> ids of the context based on
+  the mouse state, window states and currently-clipped region
+  (<code>mu_update_control</code>) before finally handling any control-specific behaviour and
+  pushing draw commands.
+</p>
+
+
+<h2 id='hover_state' class='section-header'>Hover State</h2>
+<p>
+  To determine whether a control is currently being hovered over by the user we
+  first check to make sure the control&#39;s rectangle overlaps the mouse position, we
+  then iterate down from the top of the <code>container_stack</code> to find the
+  root-container we&#39;re currently in (that is, a container which is a window rather
+  than a panel) and make sure that the root container matches the context&#39;s
+  <code>hover_root</code> pointer, indicating that it is the root-container which the mouse
+  is currently over; this is done such that a window above the button will prevent
+  that button from being considered &quot;hovered&quot; over.
+</p>
+
+<p>
+  As the windows aren&#39;t necessarily processed in the order they will eventually
+  appear, the <code>hover_root</code> value is set each frame: the current frame uses the
+  previous frame&#39;s hovered-over-window and thus always lags one frame behind. In
+  practise this is effectively unnoticeable.
+</p>
+
+<p>
+  This has to be done as we won&#39;t know the state of all the windows
+  until the frame is finished, in fact we won&#39;t even know which windows <em>exist</em>
+  until we&#39;ve finished processing the UI for a given frame.
+</p>
+
+
+<h2 id='z_ordering_in_a_fixed_sized_buffer' class='section-header'>Z-ordering In A Fixed-Sized Buffer</h2>
+<p>
+  As microui uses a fixed sized region of memory, a <em>single</em> command list, and
+  allows the windows to be processed in any order regardless of their z-order, a
+  unique approach is taken to assure that when the user iterates the draw
+  commands in the command list, that they are in bottom-to-top order.
+</p>
+
+<p>
+  Each time <code>mu_window_begin</code> is called a pointer to the current position in the
+  command list is stored by the window, and a &quot;jump&quot; command is pushed to the
+  command list with a NULL pointer. When <code>mu_window_end</code> is called another jump
+  command is pushed to the command list with a NULL pointer; the initially pushed
+  jump command&#39;s pointer is then set to the now-current position of the command
+  list, that is, the position where all the window&#39;s commands end.
+</p>
+
+<p>
+  At the end of the frame all the windows from that frame are sorted by their
+  <code>zindex</code> and have the jump command&#39;s pointer set to the beginning of the
+  window-above-it&#39;s commands. The first jump command in the command list is set to
+  go to the lowest window and the top-most window&#39;s jump command is set to go to
+  the end of the command list.
+</p>
+
+<p>
+  Thus if we processed a frame as the following:
+</p>
+<pre class='codeblock'>
+begin_main_window
+  do_some_ui_stuff
+  begin_popup_window
+    do_some_popup_ui_stuff
+  end_popup_window
+  do_some_ui_stuff
+end_main_window
+</pre>
+
+<p>
+  The resultant command list would exist in memory as the following blocks, with
+  the jump commands and their destinations shown as the lines connecting the
+  blocks:
+</p>
+
+<img src='images/microuiv2_jumps.png'>
+
+<p>
+  The jump commands are handled internally by microui inside the <code>mu_next_command</code>
+  function, and are thus something the user doesn&#39;t need to worry about in normal
+  usage.
+</p>
+
+
+<p>
+  The approach of having a single command list for all windows allows us to have
+  much simpler code as opposed to an approach where we would have a command list
+  per-window. We only need to keep track of and manage a single buffer which
+  everything is pushed to linearly vs having multiple buffers all of which would
+  be partially filled with commands.
+</p>
+
+<p>
+  An additional perk of the single command list is that at the end of the frame
+  the command list itself can be hashed and compared with the previous frame&#39;s
+  hash to see if anything on screen has actually changed. If nothing has changed
+  then drawing can be skipped for that frame.
+</p>
+<pre class='codeblock'>
+mu_get_id(ctx, &amp;ctx-&gt;command_list, sizeof(ctx-&gt;command_list))
+</pre>
+
+
+<h2 id='a_forgetful_ui' class='section-header'>A Forgetful UI</h2>
+<p>
+  As with all immediate mode UI some state still needs to be retained — eg.
+  scroll bars, content sizes, window position/sizes and tree-node states.
+  Typically this is done by mapping the id for a given control or window to its
+  state internally, this is what microui does.
+</p>
+
+<p>
+  An issue arises then that given the nature of immediate mode UI we never know
+  for sure if a control or window is no longer in use, thus how do we know when
+  we&#39;d be able to free the state for that control or window?
+</p>
+
+<p>
+  Microui employs the use of internal fixed-sized pools to store this state, and
+  to solve the issue of knowing which state in the pool it can stop retaining
+  employs a &quot;forgetful&quot; approach: for each piece of state (eg, a window&#39;s
+  container) that&#39;s stored internally, a <code>last_updated</code> value is kept which
+  represents the last frame in which the given window or control was processed in
+  the UI. When we begin a window which has no state stored internally and we have
+  no remaining slots in the pool, we simply find the least-recently-updated state
+  and reinitialise this slot, claiming it for the current window.
+</p>
+
+<p>
+  A disadvantage to this approach is that we have a hard limit on the amount of
+  windows we can have active at the same time, or visible tree-nodes in a
+  non-default position. Microui uses a pool of <code>48</code> window containers thus we can
+  only display 48 windows or panels at a time, for context this is what 48 windows
+  actually looks like:
+</p>
+
+<img src='images/microuiv2_windows.png'>
+
+<p>
+  In normal usage it&#39;s hard to imagine this being an issue, that being said the
+  pool&#39;s upper limit can be trivially increased by changing a single constant in
+  the code if needs be.
+</p>
+
+<p>
+  The consequence of a piece of state being &quot;reclaimed&quot; is simply that that window
+  or control is reset to its default value. In typical usage the reclaiming ends
+  up effectively unnoticeable as generally transient popup windows or tree-node
+  states which haven&#39;t been interacted with for a while are those reset to their
+  default value if a lot of other activity has occurred in the time since. It&#39;s
+  not hard to imagine that the UI would be less &quot;forgetful&quot; than a typical user,
+  and thus the resetting of &quot;old&quot; state would go unnoticed.
+</p>
+
+<p>
+  One additional perk of this approach is that because all state exists in fixed
+  sized buffers we can store the current state of the UI to a binary file by
+  simply dumping the memory of the state pools (along with the context&#39;s
+  <code>last_zindex</code> and <code>frame</code>). When the application next starts this file can be
+  loaded to restore the state of the UI.
+</p>
+
+  </body>
+</html>
