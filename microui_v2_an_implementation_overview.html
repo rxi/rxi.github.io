@@ -2,37 +2,37 @@
 <html lang="en">
   <head>
     <title>Microui v2: An Implementation Overview | rxi</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=0.45">
     <link rel="stylesheet" type="text/css" href="style.css">
   </head>
   <body>
     <a class="logo" href="index.html"></a>
-    <h1 class='title'>Microui v2: An Implementation Overview</h1>
-<div class='date'>2020.04.11</div>
-<div class='sections'><div class='section-item'><a href='#introduction'>Introduction</a></div><div class='section-item'><a href='#windows_and_controls'>Windows And Controls</a></div><div class='section-item'><a href='#hover_state'>Hover State</a></div><div class='section-item'><a href='#z_ordering_in_a_fixed_sized_buffer'>Z-ordering In A Fixed-Sized Buffer</a></div><div class='section-item'><a href='#a_forgetful_ui'>A Forgetful UI</a></div></div>
+    <h1 class="title">Microui v2: An Implementation Overview</h1>
+<div class="date">2020.04.11</div>
+<div class="sections"><div class="section-item"><a href="#introduction">Introduction</a></div><div class="section-item"><a href="#windows_and_controls">Windows And Controls</a></div><div class="section-item"><a href="#hover_state">Hover State</a></div><div class="section-item"><a href="#z_ordering_in_a_fixed_sized_buffer">Z-ordering In A Fixed-Sized Buffer</a></div><div class="section-item"><a href="#a_forgetful_ui">A Forgetful UI</a></div></div>
 
-<h2 id='introduction' class='section-header'>Introduction</h2>
+<h2 id="introduction" class="section-header">Introduction</h2>
 <p>
   This write-up outlines some of the implementation details of the
-  <a class='link' href='https://github.com/rxi/microui'> microui</a> library. At the time of writing this
-  microui is <a class='link' href='https://github.com/rxi/microui/tree/9d61da3'> version 2.01</a>
+  <a class="link" href="https://github.com/rxi/microui">microui</a> library. At the time of writing this
+  microui is <a class="link" href="https://github.com/rxi/microui/tree/9d61da3">version 2.01</a>
 </p>
 
 <p>
-  Microui is a <em>tiny</em> <a class='link' href='https://www.youtube.com/watch?v=Z1qyvQsjK5Y'>
-  immediate mode</a> UI library written in portable ANSI C — the library itself
+  Microui is a <em>tiny</em> <a class="link" href="https://www.youtube.com/watch?v=Z1qyvQsjK5Y">immediate mode</a> UI library written in portable ANSI C — the library itself
   doesn&#39;t do any drawing but instead takes user input events (eg. mouse clicks
   and key presses), processes the UI and generates an iterable list of draw
   commands (eg. &quot;draw rectangle&quot;, &quot;draw text&quot;). The library&#39;s goals are as
   follows:
 </p>
 
-<ul class='list'>
-  <li class='list-item'>small (<code>~1110 sloc</code>) </li>
-  <li class='list-item'>simply implemented </li>
-  <li class='list-item'>easy to use </li>
-  <li class='list-item'>easy to extend with custom controls </li>
-  <li class='list-item'>operating within a fixed memory region (never calls <code>malloc</code> or friends) </li>
+<ul class="list">
+  <li class="list-item">small (<code>~1110 sloc</code>) </li>
+  <li class="list-item">simply implemented </li>
+  <li class="list-item">easy to use </li>
+  <li class="list-item">easy to extend with custom controls </li>
+  <li class="list-item">operating within a fixed memory region (never calls <code>malloc</code> or friends) </li>
 </ul>
 
 <p>
@@ -41,21 +41,21 @@
   for certain scenarios. Generally the library is a good choice if:
 </p>
 
-<ul class='list'>
-  <li class='list-item'>you want something small without too many built-in controls
+<ul class="list">
+  <li class="list-item">you want something small without too many built-in controls
          besides the basics, eg. you don&#39;t need a color picker </li>
-  <li class='list-item'>you&#39;re planning to use a lot of custom controls or are aiming for a
+  <li class="list-item">you&#39;re planning to use a lot of custom controls or are aiming for a
          specific visual style and are happy to implement your own custom
          controls </li>
-  <li class='list-item'>you&#39;re targeting a less-common platform which uses non-standard or
+  <li class="list-item">you&#39;re targeting a less-common platform which uses non-standard or
          custom-written rendering, eg. MS-DOS </li>
-  <li class='list-item'>you&#39;re targeting a platform where heap allocations might cause
+  <li class="list-item">you&#39;re targeting a platform where heap allocations might cause
          an issue, eg. a long running process on an embedded device </li>
-  <li class='list-item'>you want something lightweight to use as a base for a heavier
+  <li class="list-item">you want something lightweight to use as a base for a heavier
          UI library </li>
 </ul>
 
-<h2 id='windows_and_controls' class='section-header'>Windows And Controls</h2>
+<h2 id="windows_and_controls" class="section-header">Windows And Controls</h2>
 <p>
   At the beginning of each frame microui takes user input — this is done by
   passing input events to the <code>mu_input...</code> functions. After handling input
@@ -67,11 +67,11 @@
 <p>
   Microui uses a number of stacks internally:
 </p>
-<ul class='list'>
-  <li class='list-item'><code>container_stack</code>: stack of all current containers (windows and panels) </li>
-  <li class='list-item'><code>clip_stack</code>: current &quot;clipping&quot; rectangle — when a clipping rectangle is pushed it is intersected with the last rectangle on this stack </li>
-  <li class='list-item'><code>id_stack</code>: when a control id is generated (<code>mu_get_id</code>) the id at the top of this stack is used as its initial hash. An id in microui is a 32bit unsigned integer </li>
-  <li class='list-item'><code>layout_stack</code>: the current state of the UI layout, eg. where the next control should be placed, current indentation level, dimensions of the current layout region </li>
+<ul class="list">
+  <li class="list-item"><code>container_stack</code>: stack of all current containers (windows and panels) </li>
+  <li class="list-item"><code>clip_stack</code>: current &quot;clipping&quot; rectangle — when a clipping rectangle is pushed it is intersected with the last rectangle on this stack </li>
+  <li class="list-item"><code>id_stack</code>: when a control id is generated (<code>mu_get_id</code>) the id at the top of this stack is used as its initial hash. An id in microui is a 32bit unsigned integer </li>
+  <li class="list-item"><code>layout_stack</code>: the current state of the UI layout, eg. where the next control should be placed, current indentation level, dimensions of the current layout region </li>
 </ul>
 
 <p>
@@ -92,7 +92,7 @@
 </p>
 
 
-<h2 id='hover_state' class='section-header'>Hover State</h2>
+<h2 id="hover_state" class="section-header">Hover State</h2>
 <p>
   To determine whether a control is currently being hovered over by the user we
   first check to make sure the control&#39;s rectangle overlaps the mouse position, we
@@ -118,7 +118,7 @@
 </p>
 
 
-<h2 id='z_ordering_in_a_fixed_sized_buffer' class='section-header'>Z-ordering In A Fixed-Sized Buffer</h2>
+<h2 id="z_ordering_in_a_fixed_sized_buffer" class="section-header">Z-ordering In A Fixed-Sized Buffer</h2>
 <p>
   As microui uses a fixed sized region of memory, a <em>single</em> command list, and
   allows the windows to be processed in any order regardless of their z-order, a
@@ -146,7 +146,7 @@
 <p>
   Thus if we processed a frame as the following:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 begin_main_window
   do_some_ui_stuff
   begin_popup_window
@@ -162,7 +162,7 @@ end_main_window
   blocks:
 </p>
 
-<img src='images/microuiv2_jumps.png'>
+<img src="assets/microuiv2_jumps.png">
 
 <p>
   The jump commands are handled internally by microui inside the <code>mu_next_command</code>
@@ -185,12 +185,12 @@ end_main_window
   hash to see if anything on screen has actually changed. If nothing has changed
   then drawing can be skipped for that frame.
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 mu_get_id(ctx, &amp;ctx-&gt;command_list, sizeof(ctx-&gt;command_list))
 </pre>
 
 
-<h2 id='a_forgetful_ui' class='section-header'>A Forgetful UI</h2>
+<h2 id="a_forgetful_ui" class="section-header">A Forgetful UI</h2>
 <p>
   As with all immediate mode UI some state still needs to be retained — eg.
   scroll bars, content sizes, window position/sizes and tree-node states.
@@ -223,7 +223,7 @@ mu_get_id(ctx, &amp;ctx-&gt;command_list, sizeof(ctx-&gt;command_list))
   actually looks like:
 </p>
 
-<img src='images/microuiv2_windows.png'>
+<img src="assets/microuiv2_windows.png">
 
 <p>
   In normal usage it&#39;s hard to imagine this being an issue, that being said the

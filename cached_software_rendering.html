@@ -2,22 +2,23 @@
 <html lang="en">
   <head>
     <title>Cached Software Rendering | rxi</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=0.45">
     <link rel="stylesheet" type="text/css" href="style.css">
   </head>
   <body>
     <a class="logo" href="index.html"></a>
-    <h1 class='title'>Cached Software Rendering</h1>
-<div class='date'>2020.04.02</div>
-<div class='updated'>updated: 2020.04.03</div>
-<div class='sections'><div class='section-item'><a href='#introduction'>Introduction</a></div><div class='section-item'><a href='#overview'>Overview</a></div><div class='section-item'><a href='#command_buffer'>Command Buffer</a></div><div class='section-item'><a href='#hash_grid'>Hash Grid</a></div><div class='section-item'><a href='#rendering'>Rendering</a></div><div class='section-item'><a href='#conclusion'>Conclusion</a></div></div>
+    <h1 class="title">Cached Software Rendering</h1>
+<div class="date">2020.04.02</div>
+<div class="updated">updated: 2020.04.03</div>
+<div class="sections"><div class="section-item"><a href="#introduction">Introduction</a></div><div class="section-item"><a href="#overview">Overview</a></div><div class="section-item"><a href="#command_buffer">Command Buffer</a></div><div class="section-item"><a href="#hash_grid">Hash Grid</a></div><div class="section-item"><a href="#rendering">Rendering</a></div><div class="section-item"><a href="#conclusion">Conclusion</a></div></div>
 
-<h2 id='introduction' class='section-header'>Introduction</h2>
+<h2 id="introduction" class="section-header">Introduction</h2>
 <p>
   This write-up details an approach to 2d software rendering useful for typical
   application UIs where between most frames little-or-none of the screen&#39;s
   content changes. This approach is used in the
-  <a class='link' href='https://github.com/rxi/lite'> lite</a> text editor.
+  <a class="link" href="https://github.com/rxi/lite">lite</a> text editor.
 </p>
 
 <p>
@@ -30,7 +31,7 @@
   continually redrawing.
 </p>
 
-<h2 id='overview' class='section-header'>Overview</h2>
+<h2 id="overview" class="section-header">Overview</h2>
 <p>
   The approach exists in 3 parts: the <code>Command Buffer</code>, <code>Hash Grid</code> and
   <code>Renderer</code>. For each frame where the application would typically draw, it
@@ -40,11 +41,11 @@
   and the regions for the cells which have changed are redrawn.
 </p>
 
-<h2 id='command_buffer' class='section-header'>Command Buffer</h2>
+<h2 id="command_buffer" class="section-header">Command Buffer</h2>
 <p>
   The command buffer is a simple byte array which each draw command is pushed to:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 char command_buf[1024*1024];
 int  command_buf_idx;
 </pre>
@@ -56,7 +57,7 @@ int  command_buf_idx;
   an image pointer, color, or string for text rendering). A base command at
   minimum might be represented by the following struct:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 typedef struct { int x, y, w, h; } Rect;
 
 typedef struct {
@@ -70,7 +71,7 @@ typedef struct {
   This would be used as a base for any other commands which would extend it with
   additional information they require:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 typedef struct { unsigned char r, g, b, a; } Color;
 
 typedef struct {
@@ -85,7 +86,7 @@ typedef struct {
   command buffer; no actual drawing would be done at this point:
 </p>
 
-<pre class='codeblock'>
+<pre class="codeblock">
 void push_rectangle(Rect r, Color clr) {
   RectCommand *c = (void*) &amp;command_buf[command_buf_idx];
   c-&gt;cmd.type = RECT_COMMAND;
@@ -100,7 +101,7 @@ void push_rectangle(Rect r, Color clr) {
   We would do the same for any other draw commands which occur in the frame.
 </p>
 
-<h2 id='hash_grid' class='section-header'>Hash Grid</h2>
+<h2 id="hash_grid" class="section-header">Hash Grid</h2>
 <p>
   The <code>Hash Grid</code> is a 2d grid of cells where each cell is represented by a hash
   value <em>(a 32bit unsigned integer and simple hash function such as FNV-1a should
@@ -110,7 +111,7 @@ void push_rectangle(Rect r, Color clr) {
   second hash grid of the same size is also stored as we&#39;ll need to compare the
   current hash grid with the one of the previous frame.
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 unsigned  cell_buf1[CELLS_X * CELLS_Y];
 unsigned  cell_buf2[CELLS_X * CELLS_Y];
 unsigned *cells = cell_buf1;
@@ -122,7 +123,7 @@ unsigned *cells_prev = cell_buf2;
   application&#39;s code, we reset the hash grid to an initial state; that is,
   setting each cell&#39;s hash value to the initial value used by our hash function.
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 for (int i = 0; i &lt; CELLS_X * CELLS_Y; i++) {
   cells[i] = HASH_INITIAL;
 }
@@ -133,7 +134,7 @@ for (int i = 0; i &lt; CELLS_X * CELLS_Y; i++) {
   itself. Each hash value for the cells of the hash grid which the command&#39;s
   <code>rect</code> overlaps would then be updated with the command&#39;s hash value:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 Command *cmd = (void*)  command_buf;
 Command *end = (void*) &amp;command_buf[command_buf_idx];
 
@@ -148,7 +149,7 @@ while (cmd != end) {
 <p>
   With the implementation of <code>update_overlapping_cells</code>:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 void update_overlapping_cells(Rect r, unsigned h) {
   int x1 = r.x / CELL_SIZE;
   int y1 = r.y / CELL_SIZE;
@@ -162,7 +163,7 @@ void update_overlapping_cells(Rect r, unsigned h) {
 }
 </pre>
 
-<h2 id='rendering' class='section-header'>Rendering</h2>
+<h2 id="rendering" class="section-header">Rendering</h2>
 <p>
   Once all the commands have been iterated the hash grid is complete. We then
   iterate each cell of the hash grid and compare it to the previous frame&#39;s value,
@@ -175,7 +176,7 @@ void update_overlapping_cells(Rect r, unsigned h) {
   the draw commands again, for every command where the rect overlaps that cell
   we perform the command&#39;s draw operation:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 for (int y = 0; y &lt; CELLS_Y; y++) {
   for (int x = 0; x &lt; CELLS_X; x++) {
     int idx = x + y * CELLS_X;
@@ -199,7 +200,7 @@ for (int y = 0; y &lt; CELLS_Y; y++) {
   with this frame&#39;s state) and reset the command buffer index to the start of the
   buffer:
 </p>
-<pre class='codeblock'>
+<pre class="codeblock">
 unsigned *tmp = cells_prev;
 cells_prev = cells;
 cells = tmp;
@@ -213,7 +214,7 @@ command_buf_idx = 0;
   improved by the approach when using hardware rendering.
 </p>
 
-<h2 id='conclusion' class='section-header'>Conclusion</h2>
+<h2 id="conclusion" class="section-header">Conclusion</h2>
 <p>
   The result of the approach means that rendering each frame is reduced to
   pushing a series of commands to a linear buffer and performing a fast hash
