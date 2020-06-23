@@ -11,16 +11,16 @@
     <h1 class="title">Lite: An Implementation Overview</h1>
 <div class="date">2020.06.04</div>
 <div class="updated">updated: 2020.06.06</div>
-<div class="sections"><div class="section-item"><a href="#introduction">Introduction</a></div><div class="section-item"><a href="#overview">Overview</a></div><div class="section-item"><a href="#core">Core</a></div><div class="section-item"><a href="#threads">Threads</a></div><div class="section-item"><a href="#documents">Documents</a></div><div class="section-item"><a href="#syntax_highlighting">Syntax Highlighting</a></div><div class="section-item"><a href="#user_interface">User Interface</a></div><div class="section-item"><a href="#plugins">Plugins</a></div></div>
+<div class="sections"><div class="section_item"><a href="#introduction">Introduction</a></div><div class="section_item"><a href="#overview">Overview</a></div><div class="section_item"><a href="#core">Core</a></div><div class="section_item"><a href="#threads">Threads</a></div><div class="section_item"><a href="#documents">Documents</a></div><div class="section_item"><a href="#syntax_highlighting">Syntax Highlighting</a></div><div class="section_item"><a href="#user_interface">User Interface</a></div><div class="section_item"><a href="#plugins">Plugins</a></div></div>
 
-<h2 id="introduction" class="section-header">Introduction</h2>
+<h2 id="introduction" class="section_header">Introduction</h2>
 <p>
   This write-up outlines some of the implementation details of the
   <a class="link" href="http://github.com/rxi/lite">lite</a> text editor. At the time of writing
   this lite is version <a class="link" href="https://github.com/rxi/lite/releases/tag/v1.06">1.06</a>.
 </p>
 
-<h2 id="overview" class="section-header">Overview</h2>
+<h2 id="overview" class="section_header">Overview</h2>
 <p>
   Lite is written mainly in Lua (5.2) with the lowest level parts written in C.
   It is written with the intent of being lightweight, easy on the eyes,
@@ -30,7 +30,7 @@
 </p>
 
 
-<h2 id="core" class="section-header">Core</h2>
+<h2 id="core" class="section_header">Core</h2>
 <p>
   The core of lite implements documents, syntax highlighting, a
   cooperative-threading system, basic logging and the general ui layout system.
@@ -40,7 +40,7 @@
 </p>
 
 
-<h2 id="threads" class="section-header">Threads</h2>
+<h2 id="threads" class="section_header">Threads</h2>
 <p>
   Lite implements a cooperative-threading system where by background tasks —
   such as full-document syntax highlighting and updating the internal list of
@@ -78,7 +78,7 @@ end
   (<code>data/core/doc/highlighter.lua</code>).
 </p>
 
-<h2 id="documents" class="section-header">Documents</h2>
+<h2 id="documents" class="section_header">Documents</h2>
 <p>
   All loaded text files in lite are stored in <code>Docs</code>. A doc keeps a table
   of a text file&#39;s lines (<code>Doc.lines</code>), undo and redo
@@ -97,15 +97,15 @@ end
   about having those which are never unregistered through error. This leads to
   much simpler, less error-prone code.
 </p>
-<h2 id="syntax_highlighting" class="section-header">Syntax Highlighting</h2>
+<h2 id="syntax_highlighting" class="section_header">Syntax Highlighting</h2>
 <p>
   Lite implements a simple syntax highlighter based around lua patterns, this is
   split up into 3 parts:
 </p>
 <ul class="list">
-  <li class="list-item"><code>core.syntax</code>: stores language syntax specifications</li>
-  <li class="list-item"><code>core.tokenizer</code>: converts text into table of tokens using a given syntax</li>
-  <li class="list-item"><code>core.doc.highlighter</code>: stores token state for lines of a doc and handles
+  <li class="list_item"><code>core.syntax</code>: stores language syntax specifications</li>
+  <li class="list_item"><code>core.tokenizer</code>: converts text into table of tokens using a given syntax</li>
+  <li class="list_item"><code>core.doc.highlighter</code>: stores token state for lines of a doc and handles
          full-document incremental highlighting</li>
 </ul>
 <p>
@@ -171,19 +171,19 @@ end
   This implementation results in the following characteristics:
 </p>
 <ul class="list">
-  <li class="list-item">Displayed lines are always syntax highlighted with, at the very
+  <li class="list_item">Displayed lines are always syntax highlighted with, at the very
          least, highlighting which is valid to the current screen&#39;s content</li>
-  <li class="list-item">Displayed lines are <em>eventually</em> highlighted with
+  <li class="list_item">Displayed lines are <em>eventually</em> highlighted with
          full-document aware highlighting</li>
-  <li class="list-item">The highlighting is performed per-line, and so — with the exception
+  <li class="list_item">The highlighting is performed per-line, and so — with the exception
          of extremely long lines — can be done incrementally without a
          negative effect on responsiveness</li>
-  <li class="list-item">Highlighting is only performed up until the point in the document it
+  <li class="list_item">Highlighting is only performed up until the point in the document it
          is required, for example, up until the last visible line</li>
 </ul>
 
 
-<h2 id="user_interface" class="section-header">User Interface</h2>
+<h2 id="user_interface" class="section_header">User Interface</h2>
 <p>
   Each part of lite&#39;s UI is implemented as a <code>View</code>, that is, a document is
   shown in the UI as a <code>DocView</code>, the status bar at the bottom the
@@ -197,9 +197,9 @@ end
   of the following types:
 </p>
 <ul class="list">
-  <li class="list-item"><code>hsplit</code>: Contains two children side-by-side and a divider between them</li>
-  <li class="list-item"><code>vsplit</code>: Contains two children one-above-the-other and a divider between them</li>
-  <li class="list-item"><code>leaf</code>: Contains one or more views, and, if there is more than one
+  <li class="list_item"><code>hsplit</code>: Contains two children side-by-side and a divider between them</li>
+  <li class="list_item"><code>vsplit</code>: Contains two children one-above-the-other and a divider between them</li>
+  <li class="list_item"><code>leaf</code>: Contains one or more views, and, if there is more than one
         view, a tab at the top for each view.</li>
 </ul>
 <p>
@@ -239,7 +239,7 @@ end
 </p>
 
 
-<h2 id="plugins" class="section-header">Plugins</h2>
+<h2 id="plugins" class="section_header">Plugins</h2>
 <p>
   Lite&#39;s plugin system is based around lua&#39;s module system; each plugin is
   simply a lua module (that is, a single <code>.lua</code> file, or, a directory

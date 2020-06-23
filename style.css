@@ -28,7 +28,7 @@
 .updated:before { content: " ("; }
 .updated:after { content: ")"; }
 
-.posts .post-title:before {
+.posts .post_title:before {
   content: "- ";
 }
 
@@ -114,7 +114,7 @@ img {
   padding: 0;
 }
 
-.section-item:before {
+.section_item:before {
   counter-increment: ol-counter;
   content: "0" counter(ol-counter) ". ";
 }

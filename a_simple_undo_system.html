@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>A Simple Undo System | rxi</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.45">
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
+  <body>
+    <a class="logo" href="index.html"></a>
+    <h1 class="title">A Simple Undo System</h1>
+<div class="date">2020.06.23</div>
+<div class="sections"><div class="section_item"><a href="#overview">Overview</a></div><div class="section_item"><a href="#usage">Usage</a></div><div class="section_item"><a href="#implementation">Implementation</a></div></div>
+
+<h2 id="overview" class="section_header">Overview</h2>
+<p>
+  This write-up describes a simple, practical implementation of an undo system
+  for tools and applications. Although this technique is not applicable to all
+  software, for cases where it is (such as small tools), it can be applied
+  trivially with very little change to the existing code and overall project
+  structure.
+</p>
+<p>
+  The undo system is based around calling a single function before potentially
+  modifying any block of data. At the end of the user interaction a &quot;commit&quot;
+  function is called which checks each block of data for differences with its
+  pre-commit state and pushes the old data to the undo stack for any of these
+  differences.
+</p>
+<p>
+  As the system works by marking data which <em>may</em> change before
+  it <em>has</em> changed, the approach lends itself well to immediate mode UIs
+  where there may be no indicator that a value will change before it does, nor a
+  convenient way of retrieving its previous value after it has changed.
+</p>
+
+<h2 id="usage" class="section_header">Usage</h2>
+<p>
+  The main loop of a simple program which edits the content of a small bitmap
+  may look as follows:
+</p>
+<pre class="codeblock">
+for (;;) {
+  handle_events();
+
+  if (mouse.is_pressed) {
+    set_pixel(bitmap, mouse.x, mouse.y);
+  }
+
+  draw();
+}
+</pre>
+<p>
+  Undo/redo support could then be added with the simple addition of two lines of
+  code:
+</p>
+<pre class="codeblock">
+for (;;) {
+  handle_events();
+
+  if (mouse.is_pressed) {
+    undo_push(bitmap, sizeof(bitmap))
+    set_pixel(bitmap, mouse.x, mouse.y);
+  }
+
+  if (!mouse.is_pressed) { undo_commit(); }
+
+  draw();
+}
+</pre>
+<p>
+  Any change made to the bitmap would then be tracked by the undo system, calls
+  to the undo system&#39;s <code>undo_undo()</code> and <code>undo_redo()</code> functions
+  would undo and redo the user&#39;s actions as expected.
+</p>
+<p>
+  Several blocks of memory can be passed to the undo system by calling
+  <code>undo_push()</code> on each block which may change. In a situation where our
+  bitmap is large it may be more practical to call <code>undo_push()</code> on each
+  <em>region</em> of potential-change as opposed to the entire bitmap. This
+  reduces the amount of work the undo system has to do in detecting changes:
+</p>
+<pre class="codeblock">
+void set_pixel(unsigned *bitmap, int x, int y) {
+  unsigned *p = &amp;bitmap[x + y * WIDTH];
+  undo_push(p, sizeof(*p));
+  *p = 0xff00ff;
+}
+</pre>
+<p>
+  Alternatively the region could be an entire pixel-row instead of a single
+  pixel, or several rows, depending on the operation being performed.
+</p>
+<p>
+  Note that in all cases only the <em>changes</em> are pushed to the resultant
+  undo stack after <code>undo_commit()</code> is called. The block of data passed to
+  <code>undo_push()</code> is kept only until <code>undo_commit()</code> is called.
+</p>
+<p>
+  The application of this approach to undo isn&#39;t limited to bitmaps. For
+  example, if you have a fixed buffer of game-objects, commands or other items,
+  the fixed buffers could be passed to <code>undo_push()</code>, or — if the buffers
+  are large — individual items in the buffers could be passed before changes
+  are made to those items:
+</p>
+<pre class="codeblock">
+undo_push(object, sizeof(*object));
+object-&gt;x = 10;
+object-&gt;y = 20;
+</pre>
+
+
+<h2 id="implementation" class="section_header">Implementation</h2>
+<p>
+  Internally the implementation stores 3 stacks:
+</p>
+<ul class="list">
+  <li class="list_item"><code>undo</code> — Stores changes that can be undone</li>
+  <li class="list_item"><code>redo</code> — Stores undone changes which can be redone</li>
+  <li class="list_item"><code>temp</code> — Stores copies of all blocks of data
+         passed to <code>undo_push</code> since the last commit</li>
+</ul>
+<p>
+  Each stack stores a series of <code>items</code> — a single <code>item</code> consists
+  of the following parts which are pushed to the stack in order (and thus popped
+  from the stack in the reverse order):
+</p>
+<ul class="list">
+  <li class="list_item"><code>data</code> — Copy of the data before it was modified</li>
+  <li class="list_item"><code>pointer</code> — Pointer to the data&#39;s location in memory</li>
+  <li class="list_item"><code>size</code> — Size in bytes of the data</li>
+</ul>
+<p>
+  The <code>undo_push()</code> function takes a pointer and size value. When it is
+  called the <code>temp stack</code> is first scanned to check if we already have an
+  item for the given data block — if so the function already has
+  the old-data for this commit and can return without doing anything. Otherwise
+  — if the data is not on the <code>temp stack</code> — we push an item for the
+  given pointer and size: pushing the data at the pointer, the pointer itself
+  and finally the size of the data block.
+</p>
+<p>
+  When <code>undo_commit()</code> is called each item is popped from the <code>temp stack</code>
+  and the stored data is compared to the current data at the item&#39;s pointer. Any
+  differences are pushed as items to the <code>undo stack</code>. When the first
+  change is encountered the <code>redo stack</code> is reset and a null item is
+  pushed to the <code>undo stack</code> — this item is used to indicate the
+  beginning of this commit.
+</p>
+<p>
+  When <code>undo_undo()</code> is called each item on the <code>undo stack</code> is popped
+  until the null item is reached. The data stored for each item is pushed to
+  the <code>redo stack</code> so that it can be redone and the item&#39;s data is copied
+  to the location of the item&#39;s stored pointer such as to restore its old state.
+</p>
+<p>
+  The implementation of <code>undo_redo()</code> is identical to that of
+  <code>undo_undo()</code> but with the roles of the undo and redo
+  stacks swapped.
+</p>
+<p>
+  To deal with running out of memory on the <code>undo stack</code> the stack&#39;s push
+  operation can be implemented such that the content at the beginning of the
+  stack is discarded by shifting the entire stack&#39;s content if it does not have
+  enough space for the pushed item. In <code>undo_undo()</code> a scan of the
+  <code>undo stack</code> can be performed to check for the existence of a null item
+  as to ensure a full commit exists before the undo operation is attempted.
+</p>
+
+  </body>
+</html>

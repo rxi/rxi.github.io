@@ -11,9 +11,9 @@
     <h1 class="title">Cached Software Rendering</h1>
 <div class="date">2020.04.02</div>
 <div class="updated">updated: 2020.04.03</div>
-<div class="sections"><div class="section-item"><a href="#introduction">Introduction</a></div><div class="section-item"><a href="#overview">Overview</a></div><div class="section-item"><a href="#command_buffer">Command Buffer</a></div><div class="section-item"><a href="#hash_grid">Hash Grid</a></div><div class="section-item"><a href="#rendering">Rendering</a></div><div class="section-item"><a href="#conclusion">Conclusion</a></div></div>
+<div class="sections"><div class="section_item"><a href="#introduction">Introduction</a></div><div class="section_item"><a href="#overview">Overview</a></div><div class="section_item"><a href="#command_buffer">Command Buffer</a></div><div class="section_item"><a href="#hash_grid">Hash Grid</a></div><div class="section_item"><a href="#rendering">Rendering</a></div><div class="section_item"><a href="#conclusion">Conclusion</a></div></div>
 
-<h2 id="introduction" class="section-header">Introduction</h2>
+<h2 id="introduction" class="section_header">Introduction</h2>
 <p>
   This write-up details an approach to 2d software rendering useful for typical
   application UIs where between most frames little-or-none of the screen&#39;s
@@ -31,7 +31,7 @@
   continually redrawing.
 </p>
 
-<h2 id="overview" class="section-header">Overview</h2>
+<h2 id="overview" class="section_header">Overview</h2>
 <p>
   The approach exists in 3 parts: the <code>Command Buffer</code>, <code>Hash Grid</code> and
   <code>Renderer</code>. For each frame where the application would typically draw, it
@@ -41,7 +41,7 @@
   and the regions for the cells which have changed are redrawn.
 </p>
 
-<h2 id="command_buffer" class="section-header">Command Buffer</h2>
+<h2 id="command_buffer" class="section_header">Command Buffer</h2>
 <p>
   The command buffer is a simple byte array which each draw command is pushed to:
 </p>
@@ -101,7 +101,7 @@ void push_rectangle(Rect r, Color clr) {
   We would do the same for any other draw commands which occur in the frame.
 </p>
 
-<h2 id="hash_grid" class="section-header">Hash Grid</h2>
+<h2 id="hash_grid" class="section_header">Hash Grid</h2>
 <p>
   The <code>Hash Grid</code> is a 2d grid of cells where each cell is represented by a hash
   value <em>(a 32bit unsigned integer and simple hash function such as FNV-1a should
@@ -163,7 +163,7 @@ void update_overlapping_cells(Rect r, unsigned h) {
 }
 </pre>
 
-<h2 id="rendering" class="section-header">Rendering</h2>
+<h2 id="rendering" class="section_header">Rendering</h2>
 <p>
   Once all the commands have been iterated the hash grid is complete. We then
   iterate each cell of the hash grid and compare it to the previous frame&#39;s value,
@@ -214,7 +214,7 @@ command_buf_idx = 0;
   improved by the approach when using hardware rendering.
 </p>
 
-<h2 id="conclusion" class="section-header">Conclusion</h2>
+<h2 id="conclusion" class="section_header">Conclusion</h2>
 <p>
   The result of the approach means that rendering each frame is reduced to
   pushing a series of commands to a linear buffer and performing a fast hash
