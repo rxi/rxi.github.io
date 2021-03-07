@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Textbox Behaviour | rxi</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.45">
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
+  <body>
+    <a class="logo" href="index.html"></a>
+    <h1 class="title">Textbox Behaviour</h1>
+<div class="date">2021.03.07</div>
+<div class="sections"><div class="section_item"><a href="#overview">Overview</a></div><div class="section_item"><a href="#caret_and_selection">Caret and Selection</a></div><div class="section_item"><a href="#operations">Operations</a></div><div class="section_item"><a href="#single_line_movements">Single-line Movements</a></div><div class="section_item"><a href="#multi_line_movements">Multi-line Movements</a></div><div class="section_item"><a href="#movement_based_commands">Movement-based Commands</a></div><div class="section_item"><a href="#additional_commands">Additional Commands</a></div><div class="section_item"><a href="#mouse_input">Mouse Input</a></div></div>
+
+
+
+<h2 id="overview" class="section_header">Overview</h2>
+<p>
+  This write-up details what could be considered a &quot;full set&quot; of standard core
+  functionality for text input boxes in user interfaces for referential purposes
+  during implementation.
+</p>
+<p>
+  The core components of textbox behaviour are split into three parts:
+  One we can call <strong>Movements</strong>, which describe a means of moving from
+  one position to the next <em>(eg. one-character-to-the-left)</em>,
+  <strong>Operations</strong> which use a movement to perform an action <em>(eg. select-to)</em>
+  and finally <strong>Commmands</strong>, most of which will be an operation
+  performing a movement, although they are not limited to this.
+</p>
+
+<h2 id="caret_and_selection" class="section_header">Caret and Selection</h2>
+<p>
+  The caret/selection of a textbox is typically implemented as a pair of
+  integers; both are grouped together as they are part of the same thing. The
+  first integer (we&#39;ll refer to this as the head) is the caret&#39;s current
+  position; the second integer (the tail) is the other end of the selection —
+  in the case that there is no text selected the head and tail are the same
+  value and only the caret is displayed. In the case that there is text selected
+  the value of both sides differ from one another.
+</p>
+
+<h2 id="operations" class="section_header">Operations</h2>
+<p>
+  Textboxes support the following 3 core operations for navigating and editing
+  text; each operation uses a single movement to achieve it&#39;s goal — in terms
+  of implementation you could think of each operation implemented as a function
+  which itself takes a movement-function as an argument. As the movements are
+  common between operations this reduces code duplication as each movement only
+  needs to be implemented once to be used by any operation.
+</p>
+<p>
+  The operations are as follows:
+</p>
+<ul class="list">
+  <li class="list_item"><code>move-to</code> - Moves the position of the caret (both sides of the selection)</li>
+  <li class="list_item"><code>select-to</code> - Moves <em>only</em> the head of the selection and leaves the tail uneffected</li>
+  <li class="list_item"><code>delete-to</code> - Deletes everything between the caret and resultant position</li>
+</ul>
+
+
+<h2 id="single_line_movements" class="section_header">Single-line Movements</h2>
+<p>
+  Single line movements are supported by both single-line textboxes and
+  multi-line text boxes. The core single-line movements are as follows:
+</p>
+<ul class="list">
+  <li class="list_item"><code>left</code> - move one character to the left</li>
+  <li class="list_item"><code>right</code> - move one character to the right</li>
+  <li class="list_item"><code>next-word-end</code> - skip rightward whitespace and move to the end of the next word; if we&#39;re currently in the middle of a word move to the end of that word </li>
+  <li class="list_item"><code>previous-word-end</code> - skip leftward whitespace and move to the start of the previous word; if we&#39;re currently in the middle of a word move to the start of that word </li>
+  <li class="list_item"><code>start</code> - move to before the first character of the text</li>
+  <li class="list_item"><code>end</code> - move to after the last character of the text</li>
+</ul>
+<p>
+  If by performing a movement it would result in the position being before
+  the start of the text or after the end of the text, the result should be
+  clamped to the text&#39;s bounds.
+</p>
+
+
+<h2 id="multi_line_movements" class="section_header">Multi-line Movements</h2>
+<p>
+  Multi-line movements are supported only by multi-line text boxes; these are as
+  follows:
+</p>
+<ul class="list">
+  <li class="list_item"><code>up</code> - move to the line above</li>
+  <li class="list_item"><code>down</code> - move to the line below</li>
+  <li class="list_item"><code>line-start</code> - move to the start of the current line (the soft-line if word-wrapped)</li>
+  <li class="list_item"><code>line-end</code> - move to the end of the current line (the soft-line if word-wrapped)</li>
+  <li class="list_item"><code>page-up</code> - move up by the height of the textbox</li>
+  <li class="list_item"><code>page-down</code> - move down by the height of the textbox</li>
+</ul>
+<p>
+  In the case of several successive vertical movements the horizontal position
+  should always be as close to the initial horizontal position from the first
+  movement. Vertical movement horizontal positioning should be performed to keep
+  <em>visual</em> consistency rather than character-offset consistency, eg.
+  moving up a line should place the caret as close as possible on the screen to
+  its original horizontal position.
+</p>
+<p>
+  In the case of <code>page-up</code> and <code>page-down</code> the caret should move the
+  distance of the textbox&#39;s height. A page-up movement followed by a page-down
+  movement should always result in returning to the original position, with the
+  exception of the case where the page-up movement places the caret at the
+  beginning of the text as there is not a whole textbox-height space above the
+  current position.
+</p>
+
+<h2 id="movement_based_commands" class="section_header">Movement-based Commands</h2>
+<p>
+  By combining the operations and movements described above, the following core
+  commands can be supported:
+</p>
+<ul class="list">
+   <li class="list_item"><code>backspace</code> - delete-to + left - <em>(Backspace, Shift+Backspace)</em></li>
+   <li class="list_item"><code>delete</code> - delete-to + right - <em>(Delete)</em></li>
+   <li class="list_item"><code>delete-word-left</code> - delete-to + word-left - <em>(Ctrl+Backspace, Ctrl+Shift+Backspace)</em></li>
+   <li class="list_item"><code>delete-word-right</code> - delete-to + word-right - <em>(Ctrl+Delete)</em></li>
+   <li class="list_item"><code>move-left</code> - move-to + left - <em>(Left)</em></li>
+   <li class="list_item"><code>move-right</code> - move-to + right - <em>(Right)</em></li>
+   <li class="list_item"><code>move-up</code> - move-to + up - <em>(Up)</em></li>
+   <li class="list_item"><code>move-down</code> - move-to + down - <em>(Down)</em></li>
+   <li class="list_item"><code>move-word-left</code> - move-to + word-left - <em>(Ctrl+Left)</em></li>
+   <li class="list_item"><code>move-word-right</code> - move-to + word-right - <em>(Ctrl+Right)</em></li>
+   <li class="list_item"><code>move-line-start</code> - move-to + line-start - <em>(Home)</em></li>
+   <li class="list_item"><code>move-line-end</code> - move-to + line-end - <em>(End)</em></li>
+   <li class="list_item"><code>move-start</code> - move-to + start - <em>(Ctrl+Home)</em></li>
+   <li class="list_item"><code>move-end</code> - move-to + end - <em>(Ctrl+End)</em></li>
+   <li class="list_item"><code>select-left</code> - select-to + left - <em>(Shift+Left)</em></li>
+   <li class="list_item"><code>select-right</code> - select-to + right - <em>(Shift+Right)</em></li>
+   <li class="list_item"><code>select-up</code> - select-to + up - <em>(Shift+Up)</em></li>
+   <li class="list_item"><code>select-down</code> - select-to + down - <em>(Shift+Down)</em></li>
+   <li class="list_item"><code>select-word-left</code> - select-to + word-left - <em>(Ctrl+Shift+Left)</em></li>
+   <li class="list_item"><code>select-word-right</code> - select-to + word-right - <em>(Ctrl+Shift+Right)</em></li>
+   <li class="list_item"><code>select-line-start</code> - select-to + line-start - <em>(Shift+Home)</em></li>
+   <li class="list_item"><code>select-line-end</code> - select-to + line-end - <em>(Shift+End)</em></li>
+   <li class="list_item"><code>select-start</code> - select-to + start - <em>(Ctrl+Shift+Home)</em></li>
+   <li class="list_item"><code>select-end</code> - select-to + end - <em>(Ctrl+Shift+End)</em></li>
+</ul>
+<p>
+  Both the <code>move-left</code> and <code>move-right</code> commands have a special case:
+  if there is text selected, instead of performing the usual operation
+  of moving one character to the left/right, the caret is instead moved to the
+  corresponding edge of the selected text and the selection is canceled.
+</p>
+
+<h2 id="additional_commands" class="section_header">Additional Commands</h2>
+<p>
+  In addition to the movement based commands there are several other commands
+  which do not rely on movement:
+</p>
+<ul class="list">
+  <li class="list_item"><code>newline</code> - inserts a new line in a multi-line textbox - <em>(Return, Shift+Return)</em></li>
+  <li class="list_item"><code>select-all</code> - selects all text in the textbox - <em>(Ctrl+A)</em></li>
+  <li class="list_item"><code>cut</code> - copies the current selection to the clipboard and deletes it - <em>(Ctrl+X, Shift+Delete)</em></li>
+  <li class="list_item"><code>copy</code> - copies the current selection to the clipboard - <em>(Ctrl+C, Ctrl+Insert)</em></li>
+  <li class="list_item"><code>paste</code> - inserts the text currently on the clipboard - <em>(Ctrl+V, Shift+Insert)</em></li>
+  <li class="list_item"><code>undo</code> - undoes up to the last point of 300ms of inaction - <em>(Ctrl+Z)</em></li>
+  <li class="list_item"><code>redo</code> - negates a previously performed undo command - <em>(Ctrl+Y)</em></li>
+</ul>
+
+<h2 id="mouse_input" class="section_header">Mouse Input</h2>
+<p>
+  Textboxes typically support mouse input for modifying the selection. There are
+  3 modes to mouse input, the state of which is determined by the number of
+  clicks that occurred:
+</p>
+<ul class="list">
+  <li class="list_item"><code>single-click</code> - character-granularity</li>
+  <li class="list_item"><code>double-click</code> - word-granularity</li>
+  <li class="list_item"><code>triple-click</code> - line-granularity</li>
+</ul>
+<p>
+  When the mouse is pressed down the both sides of the selection are
+  set to the current mouse cursor position. If the mouse is then dragged the
+  head of the selection is moved to that position while the tail remains in
+  place of the original click. If <em>Shift</em> is held when the mouse is
+  clicked the tail of the selection is uneffected and only the head is changed.
+</p>
+<p>
+  The placement of both sides of the selection are based around the
+  granularities specified above, such that, for example, if one were to double
+  click and drag their mouse it would select a word at a time; if one were
+  to triple-click it would select a line at a time.
+</p>
+
+
+  </body>
+</html>
