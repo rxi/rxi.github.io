@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>A Simple Serialization System | rxi</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.45">
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
+  <body>
+    <a class="logo" href="index.html"></a>
+    <h1 class="title">A Simple Serialization System</h1>
+    <div class="date">2024.10.13</div>
+<img src="assets/serialization_diagram.png"><br>
+<div class="sections">
+<div class="section_item"><a href="#introduction">Introduction</a></div>
+<div class="section_item"><a href="#format_overview">Format Overview</a></div>
+<div class="section_item"><a href="#usage">Usage</a></div>
+<div class="section_item"><a href="#writer">Writer</a></div>
+<div class="section_item"><a href="#reader">Reader</a></div>
+<div class="section_item"><a href="#inspection">Inspection</a></div>
+<div class="section_item"><a href="#string_interning">String Interning</a></div>
+</div>
+<h2 id="introduction" class="section_header">Introduction</h2>
+<p>This write-up outlines a simple, robust serialization system. The write-up uses C for its code examples, but the format and general implementation can be applied to any general-purpose language.</p>
+<p>The system as outlined here, although simple, is the result of many iterations over several years. Note there are many &quot;improvements&quot; that could be made to this system, both in performance and reductions in size of the resultant data (eg. variable-sized integers, fixed-type arrays) — the system deliberately compromises on being &quot;clever&quot; for the sake of keeping things simple, though the user is free to make both additions in complexity and addition of base types, depending on how valuable those additions might be to their specific use-case.</p>
+<p>The serialization system:</p>
+<ul>
+<li><strong>Simple</strong> — the system can be implemented in around 200 lines of C, with error handling.</li>
+<li><strong>Inspectable</strong> — the serialized data is self-describing and can be easily converted to a text format, allowing it to be trivially inspected.</li>
+<li><strong>Fast</strong> — The resultant data is stored as binary and can be read linearly without any intermediate representation (eg. not parsed to a tree) and written with very little state (eg. needing only a map of <code>string =&gt; offset</code> if we choose to intern our strings).</li>
+<li><strong>Robust</strong> — The format is both backwards and forwards compatible and supports being read partially (eg. we could take the just the start of the data and read that without needing to load the entirety of the data)</li>
+</ul>
+<h2 id="format_overview" class="section_header">Format Overview</h2>
+<p>The system stores the data as a contiguous series of values. Each value consists of a &quot;tag&quot; byte representing the value’s type, followed by the data of the value. Thus something like a 64bit float would be stored as 1 byte with the enum <code>TYPE_F64</code>, followed by 8 bytes storing the float value itself.</p>
+<p>Strings are stored as the tag byte, an integer representing the length of the string and the string data; the string is always followed by a single &quot;null&quot; byte — this is done to simplify things when working with C; since the data is always read from memory it allows us to use the strings directly while without copying them during the reading process — the zero-byte can be omitted if the data is intended to be used only with languages which do not use null-terminated strings.</p>
+<p>In addition to scalar values and strings, the format supports arrays and objects. Arrays and objects work the same: a tag byte indicating either <code>TYPE_ARRAY</code> or <code>TYPE_OBJECT</code> followed by the contained values and a single tag byte of <code>TYPE_END</code> to indicate the end of the array/object. The only distinction between an array and object is in that arrays store a series of values (eg. <code>value</code>, <code>value</code>, <code>value</code>, etc.), where as an object stores a series of pairs of values (eg. <code>key</code>, <code>value</code>, <code>key</code>, <code>value</code>, <code>key</code>, <code>value</code>, etc.). Although both arrays and objects effectively work the same and we could make do using only arrays, two distinct types are used mainly to make things clearer when inspecting the data.</p>
+<h2 id="usage" class="section_header">Usage</h2>
+<p>To give you an idea of what the serialization system might look like when implemented, below shows how one might write functions to serialize and deserialize a <code>Rect</code> struct using the system described in this write-up:</p>
+<pre><code class="language-c">typedef struct {
+    double x, y, w, h;
+} Rect;
+
+
+void write_rect(Writer *w, Rect r) {
+    write_object(w);
+    write_string(w, &quot;x&quot;); write_f64(w, r.x);
+    write_string(w, &quot;y&quot;); write_f64(w, r.y);
+    write_string(w, &quot;w&quot;); write_f64(w, r.w);
+    write_string(w, &quot;h&quot;); write_f64(w, r.h);
+    write_end(w);
+}
+
+
+void write_rects(Writer *w, Rect *rects, int count) {
+    write_array(w);
+    for (int i = 0; i &lt; count; i++) {
+        write_rect(w, rects[i]);
+    }
+    write_end(w);
+}
+
+
+Rect read_rect(Reader *r, Value obj) {
+    Rect res = {0};
+    Value key, val;
+    while (iter_object(r, obj, &amp;key, &amp;val)) {
+        assert(key.type == TYPE_STRING);
+        /**/ if (!strcmp(key.s, &quot;x&quot;)) { res.x = val.f; }
+        else if (!strcmp(key.s, &quot;y&quot;)) { res.y = val.f; }
+        else if (!strcmp(key.s, &quot;w&quot;)) { res.w = val.f; }
+        else if (!strcmp(key.s, &quot;h&quot;)) { res.h = val.f; }
+    }
+    return res;
+}
+
+// reads up to `max_count` rects into the `rects` array and returns the number
+// of rects read — note: if you have a dynamic array as part of your base
+// library, it could be used here instead of the fixed `rects` array
+int read_rects(Reader *r, Value arr, Rect *rects, int max_count) {
+    Value val;
+    int i = 0;
+    while (iter_array(r, arr, &amp;val) &amp;&amp; i &lt; max_count) {
+        rects[i] = read_rect(r, val);
+        i++;
+    }
+    return i;
+}
+</code></pre>
+<p>Note that the use of macros (or, in other languages reflection) are not present in the above code. I’ve found that doing this tends to be detrimental; although the code seems verbose at a glance, it has the advantage of being mind-numbingly simple and immediately understandable at first glance. Additionally since the serialization of everything is fully explicit we can manually handle backwards compatibility explicitly and trivially.</p>
+<p>An argument could be made that the code being this way could be more prone to typos or copy-paste errors, but, since the format is easy to inspect (see the below section) we can easily verify the code works correctly by dumping the result to plain text.</p>
+<h2 id="writer" class="section_header">Writer</h2>
+<p>Due to the nature of the format, at its base the writer needs no state other than a buffer or file handle of which to write to <em>(Note: additional state is required for string interning; see the <a href="#string_interning">String Interning</a> section below)</em>.</p>
+<pre><code class="language-c">typedef struct {
+    FILE *fp;
+} Writer;
+</code></pre>
+<p>The writer is implemented in a single function of two arguments: the <code>Writer</code> context above, and a single value represented as a tagged union:</p>
+<pre><code class="language-c">enum {
+    TYPE_ERROR,
+    TYPE_END,
+    TYPE_OBJECT,
+    TYPE_ARRAY,
+    TYPE_F64,
+    TYPE_BOOL,
+    TYPE_STRING,
+};
+
+
+typedef struct {
+    uint8_t type;
+    union {
+        struct { char *s; uint32_t len; };
+        double f;
+        bool b;
+        int depth;
+    };
+} Value;
+
+
+void write(Writer *w, Value val) {
+    // write tag byte
+    fwrite(&amp;val.type, 1, 1, w-&gt;fp);
+    // write value
+    switch (val.type) {
+    case TYPE_F64:
+        fwrite(&amp;val.f, sizeof(val.f), 1, w-&gt;fp);
+        break;
+    case TYPE_STRING:
+        fwrite(&amp;val.len, sizeof(val.len), 1, w-&gt;fp); // write length
+        fwrite(val.s, 1, val.len, w-&gt;fp);            // write string
+        uint8_t null = 0;
+        fwrite(&amp;null, 1, 1, w-&gt;fp);                  // write null-terminator
+        break;
+    case TYPE_BOOL:
+        fwrite(&amp;val.b, 1, 1, w-&gt;fp);
+        break;
+    }
+}
+</code></pre>
+<p>Note that it’s a good idea to wrap the <code>write</code> function with helper functions for each type to ensure proper type checking to avoid accidentally setting the tag field to the wrong type for the data being written:</p>
+<pre><code class="language-c">void write_f64(Writer *w, double f) {
+    write(w, (Value) { .type = TYPE_F64, .f = f });
+}
+
+void write_bool(Writer *w, bool b) {
+    write(w, (Value) { .type = TYPE_BOOL, .b = b });
+}
+
+void write_string(Writer *w, char *str) {
+    write(w, (Value) { .type = TYPE_STRING, .s = str, .len = strlen(str) });
+}
+
+void write_object(Writer *w) {
+    write(w, (Value) { .type = TYPE_OBJECT });
+}
+
+void write_array(Writer *w) {
+    write(w, (Value) { .type = TYPE_ARRAY });
+}
+
+void write_end(Writer *w) {
+    write(w, (Value) { .type = TYPE_END });
+}
+</code></pre>
+<p>The union itself may seem redundant with the presence of the wrapper functions but the same union will be used by the reader, creating a nice parity between the <code>write</code> function and the <code>read</code> function below.</p>
+<p>An example of how we would use the writer implemented in this section can be seen in the above <a href="#usage">Usage</a> section.</p>
+<h2 id="reader" class="section_header">Reader</h2>
+<p>The reader, at its core, consists of a single <code>read</code> function used to read a single value as a tagged union. Since we serialize strings with a null terminator the union returns a pointer directly to the serialized data, the string itself can be used directly without copying. If a read error occurs (such as an unknown tag, early end-of-file or out-of-bounds string length), a value with the type <code>TYPE_ERROR</code> is returned.</p>
+<pre><code class="language-c">typedef struct {
+    char *data;
+    int len;
+    int cur;
+    int depth;
+} Reader;
+
+
+bool safe_read(Reader *r, void *dst, int size) {
+    int idx = r-&gt;cur + size;
+    if (idx &gt; r-&gt;len) { return false; }
+    if (dst) { memcpy(dst, &amp;r-&gt;data[r-&gt;cur], size); }
+    r-&gt;cur = idx;
+    return true;
+}
+
+
+Value read(Reader *r) {
+    Value res;
+    // read type
+    bool ok = safe_read(r, &amp;res.type, 1);
+    // read value
+    switch (res.type) {
+    case TYPE_END:
+        r-&gt;depth--;
+        break;
+    case TYPE_OBJECT:
+    case TYPE_ARRAY:
+        r-&gt;depth++;
+        res.depth = r-&gt;depth;
+        break;
+    case TYPE_F64:
+        ok &amp;= safe_read(r, &amp;res.f, sizeof(res.f));
+        break;
+    case TYPE_BOOL:
+        ok &amp;= safe_read(r, &amp;res.b, 1);
+        break;
+    case TYPE_STRING:
+        ok &amp;= safe_read(r, &amp;res.len, sizeof(res.len));
+        res.s = &amp;r-&gt;data[r-&gt;cur];
+        ok &amp;= safe_read(r, NULL, res.len);
+        uint8_t null;
+        ok &amp;= safe_read(r, &amp;null, 1);
+        ok &amp;= (null == 0);
+        break;
+    default: // bad type
+        ok &amp;= false;
+    }
+    // return value, or error if anything above failed
+    return ok ? res : (Value) { .type = TYPE_ERROR };
+}
+</code></pre>
+<p>Although all the data could be read manually using only the <code>read</code> function, two additional iterator functions are provided: one for objects and one for arrays. These iterator functions not only save us some code, but also keep track of whether we left a value unread (for example, an unknown key/value pair serialized from a later version of our application), and more importantly, if so, skips to the next value.</p>
+<p>Skipping of values is achieved by maintaining a <code>depth</code> value. The <code>Reader</code> itself keeps track of its current depth — that is, an integer representing the current level of nesting — for example, if our current read state was within an object contained within an array, the depth would be <code>2</code>, one increment for the array and another for the object. Once we reached the next <code>end</code> value (indicating the end of the object), the depth would decrement to <code>1</code>.</p>
+<p>Object and array values returned by the <code>read</code> function store their depth and are passed to the iterator function with each iteration — thus, if during iteration we skip a value which happens to be an object or array itself, the iterator will continue to read until the <code>depth</code> level returns to match that of the thing we are iterating, assuring we skip the unhandled data in its entirety.</p>
+<pre><code class="language-c">void discard_until_depth(Reader *r, int depth) {
+    Value v = { .type = TYPE_END };
+    while (v.type != TYPE_ERROR &amp;&amp; r-&gt;depth != depth) {
+        v = read(r);
+    }
+}
+
+
+bool iter_object(Reader *r, Value obj, Value *key, Value *val) {
+    discard_until_depth(r, obj.depth);
+    *key = read(r);
+    if (key-&gt;type == TYPE_END) { return false; }
+    *val = read(r);
+    return true;
+}
+
+
+bool iter_array(Reader *r, Value arr, Value *val) {
+    discard_until_depth(r, arr.depth);
+    *val = read(r);
+    return val-&gt;type != TYPE_END;
+}
+</code></pre>
+<p>Refer to the <a href="#usage">Usage</a> section above for examples on how the iterator functions are used.</p>
+<h2 id="inspection" class="section_header">Inspection</h2>
+<p>Inspection is an important part of serialization; being able to inspect the data allows you to verify it is correct and gives you a better view of what is going on. Beyond verification it allows you to use existing text diffing tools to compare two states of serialized data. Suppose, while developing an application, you made a change to a document which resulted in some weirdness that you couldn’t explain — being able to quickly and easily see a text diff between the current version and an earlier working version of the document would prove invaluable.</p>
+<p>Since the format is self-describing we can, with very little code or effort, write a means of converting the data to human-readable text:</p>
+<pre><code class="language-c">void print_indent(int depth) {
+    for (int i = 0; i &lt; depth; i++) {
+        printf(&quot;    &quot;);
+    }
+}
+
+
+void print_value(Reader *r, Value val, int depth) {
+    Value k, v;
+    int count = 0;
+    switch (val.type) {
+    case TYPE_OBJECT:
+        printf(&quot;{\n&quot;);
+        while (iter_object(r, val, &amp;k, &amp;v)) {
+            if (count++ &gt; 0) { printf(&quot;,\n&quot;); }
+            print_indent(depth + 1);
+            print_value(r, k, depth + 1);
+            printf(&quot;: &quot;);
+            print_value(r, v, depth + 1);
+        }
+        if (count &gt; 0) { printf(&quot;\n&quot;); }
+        print_indent(depth);
+        printf(&quot;}&quot;);
+        break;
+    case TYPE_ARRAY:
+        printf(&quot;[\n&quot;);
+        while (iter_array(r, val, &amp;v)) {
+            if (count++ &gt; 0) { printf(&quot;,\n&quot;); }
+            print_indent(depth + 1);
+            print_value(r, v, depth + 1);
+        }
+        if (count &gt; 0) { printf(&quot;\n&quot;); }
+        print_indent(depth);
+        printf(&quot;]&quot;);
+        break;
+    case TYPE_F64:
+        printf(&quot;%.14g&quot;, val.f);
+        break;
+    case TYPE_BOOL:
+        printf(val.b ? &quot;true&quot; : &quot;false&quot;);
+        break;
+    case TYPE_STRING:
+        printf(&quot;\&quot;&quot;);
+        for (int i = 0; i &lt; val.len; i++) {
+            if (val.s[i] == '&quot;') {
+                printf(&quot;\\\&quot;&quot;);
+            } else {
+                printf(&quot;%c&quot;, val.s[i]);
+            }
+        }
+        printf(&quot;\&quot;&quot;);
+        break;
+    default: // bad type
+        printf(&quot;!!!ERROR!!!\n&quot;);
+        return;
+    }
+}
+</code></pre>
+<p>And when used with the array of rectangles serialized in the <a href="#usage">Usage</a> section:</p>
+<pre><code class="language-c">    Value rects_array = read(&amp;r);
+    print_value(&amp;r, rects_array, 0);
+    printf(&quot;\n&quot;);
+</code></pre>
+<p>The following output is produced:</p>
+<pre><code class="language-json">[
+    {
+        &quot;x&quot;: 1,
+        &quot;y&quot;: 2,
+        &quot;w&quot;: 3,
+        &quot;h&quot;: 4
+    },
+    {
+        &quot;x&quot;: 5,
+        &quot;y&quot;: 6,
+        &quot;w&quot;: 7,
+        &quot;h&quot;: 8
+    },
+    {
+        &quot;x&quot;: 9,
+        &quot;y&quot;: 10,
+        &quot;w&quot;: 11,
+        &quot;h&quot;: 12
+    }
+]
+</code></pre>
+<h2 id="string_interning" class="section_header">String Interning</h2>
+<p>When storing many objects (and thus many strings which are typically identical) a small trade-off to simplicity can be made by support string interning; the complexity of this change only affects the writer, the cost to the reader is minimal.</p>
+<p>To support string interning a new type would have to be added: <code>TYPE_STRINGREF</code>, in addition the reader would have to manage a mapping of written-strings to integer offsets in the file. When writing a string, the map would be checked to see if we had written it before, if so instead of writing a string we would write the <code>TYPE_STRINGREF</code> tag followed by the offset of the string in the file. If the string does not exist in the mapping we would write the string normally and add it to the map.</p>
+<p>When reading, if a <code>TYPE_STRINGREF</code> was encountered, we would jump to the offset proceeding the tag byte and continue on with the string handling code, returning a <code>TYPE_STRING</code> value to the user. When reading the user would never handle the <code>TYPE_STRINGREF</code> value directly.</p>
+
+  </body>
+</html>

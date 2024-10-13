@@ -51,10 +51,10 @@ hr {
   border-top: 1px solid #000;
 }
 
-.codeblock {
+pre {
   font-family: 'Inconsolata', monospace;
   font-weight: bold;
-  padding: 1ch 2ch;
+  padding: 2ch 2ch;
   /*
   border-left: 1px solid #000;
   background: #000;
