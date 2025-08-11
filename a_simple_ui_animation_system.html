@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>A Simple UI Animation System | rxi</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.45">
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
+  <body>
+    <a class="logo" href="index.html"></a>
+    <h1 class="title">A Simple UI Animation System</h1>
+    <div class="date">2025.08.11</div>
+<div class="sections">
+<div class="section_item"><a href="#introduction">Introduction</a></div>
+<div class="section_item"><a href="#usage">Usage</a></div>
+<div class="section_item"><a href="#implementation">Implementation</a></div>
+<div class="section_item"><a href="#conclusion">Conclusion</a></div>
+</div>
+<h2 id="introduction" class="section_header">Introduction</h2>
+<p>This write-up outlines a simple animation (or, <em>tweening</em>) system for use with <a href="https://caseymuratori.com/blog_0001">immediate mode</a> user interfaces.</p>
+<p>The animation system as described here was designed intentionally with the opinion that most elements of a UI should not be animated, and that of those that are animated only a couple, at most, should be active at any given moment; even though the system would work (or could be adapted) to work with many concurrent animations, it is intended that the user is utilising animations somewhat conservatively — if you want every element in your UI to be animated between states then another system will likely serve your use case better.</p>
+<p>The approach is:</p>
+<ul>
+<li><strong>Simple</strong> — can be implemented in around 50 lines of C</li>
+<li><strong>Low overhead</strong> — only needs to track currently-active animations</li>
+<li><strong>Unobtrusive</strong> — doesn't require the user to store any additional state</li>
+</ul>
+<p>The animation system doesn't modify any of the users variables directly: it can be used to animate between values even if the two states are immutable (eg. if we're storing an enum which resolves to a size, we can still animate the size). In the case a variable is being animated the user only ever stores the &quot;target&quot; value in their variable and requests the animated value as needed, this assures the user variables are never in an intermediate state and instead always represent the final &quot;true&quot; value.</p>
+<h2 id="usage" class="section_header">Usage</h2>
+<p>The animation itself consists of 3 functions:</p>
+<ul>
+<li><strong>animation_update_all(dt)</strong> — updates all current animations and purges entries for animations which are complete</li>
+<li><strong>animation_start(id, initial, time)</strong> — given an ID, the initial value and the time the animation will take to complete, starts an animation</li>
+<li><strong>animation_get(id, target)</strong> — given an ID and a target value, returns the currently animated value</li>
+</ul>
+<p>The <code>animation_update_all</code> function would be called each frame to update the animations:</p>
+<pre><code class="language-c">animation_update_all(delta_time);
+</code></pre>
+<p>As a simple example, if we have a variable <code>alpha</code> and wanted to transition it from its current value to <code>100</code> over <code>3</code> seconds when a button is pressed, the code might look as such:</p>
+<pre><code class="language-c">uint64_t id = (uint64_t) &amp;alpha;
+
+// handle button press
+if (button(&quot;Start&quot;)) {
+    animation_start(id, alpha, 3);
+    alpha = 100;
+}
+
+// retrieve the animated value for alpha, note that the
+// `alpha` variable itself remains as the target value,
+// we would use the value returned by `animation_get` at
+// the point of rendering
+double a = animation_get(id, alpha);
+</code></pre>
+<p><em>Note: This example uses the pointer of <code>alpha</code> as its unique ID — any method of generating an id for the animation could be used here, such as an ID system you'd likely already have in place for your immediate mode UI framework to identify a given widget.</em></p>
+<p>As another example, if we had a value which is stored as an <code>enum</code> used to look up a <code>size</code> value from a immutable array, we could still animate the value:</p>
+<pre><code class="language-c">uint64_t id = (uint64_t) &amp;size_enum;
+
+if (button(&quot;Start&quot;)) {
+    animation_start(id, style.sizes[size_enum], 3);
+    size_enum = NEW_SIZE;
+}
+
+double size = animation_get(id, style.sizes[size_enum]);
+</code></pre>
+<p>The resultant <code>size</code> value from <code>animation_get</code> never has to be stored or
+maintained by the user.</p>
+<h2 id="implementation" class="section_header">Implementation</h2>
+<p>Since the animation system is only intended to deal with a handful of animated states at any given point and only needs to store state for active animations, all animation state can be stored in a small, fixed size array:</p>
+<pre><code class="language-c">#define ANIMATION_MAX_ITEMS 32
+
+typedef struct {
+    uint64_t id;
+    double progress, time, initial, prev;
+} AnimationItem;
+
+AnimationItem animation_items[ANIMATION_MAX_ITEMS];
+int animation_item_count;
+</code></pre>
+<p>The <code>prev</code> value of the <code>AnimationItem</code> struct stores the last returned value; it is used by the <code>animation_start</code> function for continuing an animation from its currently animated point if <code>animation_start</code> is called again before the animation has completed.</p>
+<p>The <code>animation_update_all</code> function could be implemented as such:</p>
+<pre><code class="language-c">void animation_update_all(double dt) {
+    for (int i = animation_item_count - 1; i &gt;= 0; i--) {
+        AnimationItem *it = &amp;animation_items[i];
+        // update progress
+        it-&gt;progress += dt / it-&gt;time;
+        // remove item if it has completed
+        if (it-&gt;progress &gt;= 1.0) {
+            *it = animation_items[--animation_item_count];
+        }
+    }
+}
+</code></pre>
+<p><em>Note: we iterate backwards so we can remove items from the array without skipping a value on the next iteration. Since the order of the items doesn't matter, to remove an item we just replace it with the last item and decrement the total item count.</em></p>
+<p>For the <code>animation_start</code> function our implementation first searches the array for a matching ID, if it finds one it replaces the current animation using its previously-returned animation value as its initial value. If it doesn't it will try to add a new item for the animation if there is room.</p>
+<pre><code class="language-c">void animation_start(uint64_t id, double initial, double time) {
+    // try to find and replace existing item
+    for (int i = 0; i &lt; animation_item_count; i++) {
+        AnimationItem *it = &amp;animation_items[i];
+        if (it-&gt;id == id) {
+            it-&gt;initial = it-&gt;prev;
+            it-&gt;time = time;
+            it-&gt;progress = 0;
+            return;
+        }
+    }
+    // push new item if we have room
+    if (animation_item_count &lt; ANIMATION_MAX_ITEMS) {
+        animation_items[animation_item_count++] = (AnimationItPbuiem){
+            .id = id,
+            .initial = initial,
+            .prev = initial,
+            .time = time,
+        };
+    }
+}
+</code></pre>
+<p>In the case we've reached the maximum number of animation items, the animation is simply not added; this effectively puts the animation in its completed state and causes <code>animation_get</code> to return the target value.</p>
+<pre><code class="language-c">double animation_get(uint64_t id, double target) {
+    for (int i = 0; i &lt; animation_item_count; i++) {
+        AnimationItem *it = &amp;animation_items[i];
+        if (it-&gt;id == id) {
+            double p = it-&gt;progress;
+            p = 1 - (1 - p) * (1 - p); // apply easing
+            it-&gt;prev = it-&gt;initial + p * (target - it-&gt;initial);
+            return it-&gt;prev;
+        }
+    }
+    return target;
+}
+</code></pre>
+<h2 id="conclusion" class="section_header">Conclusion</h2>
+<p>Outlined here is the most basic implementation of this animation system for demonstrative purposes; the implementation could be extended by adding different <a href="https://easings.net/"><code>easing</code> types</a> which are passed to the <code>start</code> function, or a <code>delay</code> parameter to cause an animation to wait before starting.</p>
+<p>We could implement a means of chaining animations by having the option for items to wait for other items to be complete before progressing.</p>
+<p>For simplicity the example here uses global variables to store it's state, where as we might be better served storing this in an <code>AnimationContext</code> struct which we pass to the animation functions.</p>
+<p>These details are choices left up to the user.</p>
+
+  </body>
+</html>
