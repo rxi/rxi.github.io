@@ -9,9 +9,11 @@
   <body>
     <a class="logo" href="index.html"></a>
     <h1 class="title">Textbox Behaviour</h1>
-<div class="date">2021.03.07</div>
-<div class="sections"><div class="section_item"><a href="#overview">Overview</a></div><div class="section_item"><a href="#caret_and_selection">Caret and Selection</a></div><div class="section_item"><a href="#operations">Operations</a></div><div class="section_item"><a href="#single_line_movements">Single-line Movements</a></div><div class="section_item"><a href="#multi_line_movements">Multi-line Movements</a></div><div class="section_item"><a href="#movement_based_commands">Movement-based Commands</a></div><div class="section_item"><a href="#additional_commands">Additional Commands</a></div><div class="section_item"><a href="#mouse_input">Mouse Input</a></div></div>
+    <div class="date">2021.03.07</div>
+<div class="updated">updated: 2026.03.21</div>
 
+
+<div class="sections"><div class="section_item"><a href="#overview">Overview</a></div><div class="section_item"><a href="#caret_and_selection">Caret and Selection</a></div><div class="section_item"><a href="#operations">Operations</a></div><div class="section_item"><a href="#single_line_movements">Single-line Movements</a></div><div class="section_item"><a href="#multi_line_movements">Multi-line Movements</a></div><div class="section_item"><a href="#movement_based_commands">Movement-based Commands</a></div><div class="section_item"><a href="#additional_commands">Additional Commands</a></div><div class="section_item"><a href="#mouse_input">Mouse Input</a></div></div>
 
 
 <h2 id="overview" class="section_header">Overview</h2>
@@ -25,7 +27,7 @@
   One we can call <strong>Movements</strong>, which describe a means of moving from
   one position to the next <em>(eg. one-character-to-the-left)</em>,
   <strong>Operations</strong> which use a movement to perform an action <em>(eg. select-to)</em>
-  and finally <strong>Commmands</strong>, most of which will be an operation
+  and finally <strong>Commands</strong>, most of which will be an operation
   performing a movement, although they are not limited to this.
 </p>
 
@@ -43,7 +45,7 @@
 <h2 id="operations" class="section_header">Operations</h2>
 <p>
   Textboxes support the following 3 core operations for navigating and editing
-  text; each operation uses a single movement to achieve it&#39;s goal — in terms
+  text; each operation uses a single movement to achieve its goal — in terms
   of implementation you could think of each operation implemented as a function
   which itself takes a movement-function as an argument. As the movements are
   common between operations this reduces code duplication as each movement only
@@ -54,7 +56,7 @@
 </p>
 <ul class="list">
   <li class="list_item"><code>move-to</code> - Moves the position of the caret (both sides of the selection)</li>
-  <li class="list_item"><code>select-to</code> - Moves <em>only</em> the head of the selection and leaves the tail uneffected</li>
+  <li class="list_item"><code>select-to</code> - Moves <em>only</em> the head of the selection and leaves the tail unaffected</li>
   <li class="list_item"><code>delete-to</code> - Deletes everything between the caret and resultant position</li>
 </ul>
 
@@ -67,8 +69,8 @@
 <ul class="list">
   <li class="list_item"><code>left</code> - move one character to the left</li>
   <li class="list_item"><code>right</code> - move one character to the right</li>
-  <li class="list_item"><code>next-word-end</code> - skip rightward whitespace and move to the end of the next word; if we&#39;re currently in the middle of a word move to the end of that word </li>
-  <li class="list_item"><code>previous-word-end</code> - skip leftward whitespace and move to the start of the previous word; if we&#39;re currently in the middle of a word move to the start of that word </li>
+  <li class="list_item"><code>previous-word-start</code> - move leftward to the previous word start</li>
+  <li class="list_item"><code>next-word-end</code> - move rightward to the next word end</li>
   <li class="list_item"><code>start</code> - move to before the first character of the text</li>
   <li class="list_item"><code>end</code> - move to after the last character of the text</li>
 </ul>
@@ -117,26 +119,30 @@
 <ul class="list">
    <li class="list_item"><code>backspace</code> - delete-to + left - <em>(Backspace, Shift+Backspace)</em></li>
    <li class="list_item"><code>delete</code> - delete-to + right - <em>(Delete)</em></li>
-   <li class="list_item"><code>delete-word-left</code> - delete-to + word-left - <em>(Ctrl+Backspace, Ctrl+Shift+Backspace)</em></li>
-   <li class="list_item"><code>delete-word-right</code> - delete-to + word-right - <em>(Ctrl+Delete)</em></li>
+   <li class="list_item"><code>delete-previous-word-start</code> - delete-to + previous-word-start - <em>(Ctrl+Backspace, Ctrl+Shift+Backspace)</em></li>
+   <li class="list_item"><code>delete-next-word-end</code> - delete-to + next-word-end - <em>(Ctrl+Delete)</em></li>
    <li class="list_item"><code>move-left</code> - move-to + left - <em>(Left)</em></li>
    <li class="list_item"><code>move-right</code> - move-to + right - <em>(Right)</em></li>
    <li class="list_item"><code>move-up</code> - move-to + up - <em>(Up)</em></li>
    <li class="list_item"><code>move-down</code> - move-to + down - <em>(Down)</em></li>
-   <li class="list_item"><code>move-word-left</code> - move-to + word-left - <em>(Ctrl+Left)</em></li>
-   <li class="list_item"><code>move-word-right</code> - move-to + word-right - <em>(Ctrl+Right)</em></li>
+   <li class="list_item"><code>move-previous-word-start</code> - move-to + previous-word-start - <em>(Ctrl+Left)</em></li>
+   <li class="list_item"><code>move-next-word-end</code> - move-to + next-word-end - <em>(Ctrl+Right)</em></li>
    <li class="list_item"><code>move-line-start</code> - move-to + line-start - <em>(Home)</em></li>
    <li class="list_item"><code>move-line-end</code> - move-to + line-end - <em>(End)</em></li>
+   <li class="list_item"><code>move-page-up</code> - move-to + page-up - <em>(PageUp)</em></li>
+   <li class="list_item"><code>move-page-down</code> - move-to + page-down - <em>(PageDown)</em></li>
    <li class="list_item"><code>move-start</code> - move-to + start - <em>(Ctrl+Home)</em></li>
    <li class="list_item"><code>move-end</code> - move-to + end - <em>(Ctrl+End)</em></li>
    <li class="list_item"><code>select-left</code> - select-to + left - <em>(Shift+Left)</em></li>
    <li class="list_item"><code>select-right</code> - select-to + right - <em>(Shift+Right)</em></li>
    <li class="list_item"><code>select-up</code> - select-to + up - <em>(Shift+Up)</em></li>
    <li class="list_item"><code>select-down</code> - select-to + down - <em>(Shift+Down)</em></li>
-   <li class="list_item"><code>select-word-left</code> - select-to + word-left - <em>(Ctrl+Shift+Left)</em></li>
-   <li class="list_item"><code>select-word-right</code> - select-to + word-right - <em>(Ctrl+Shift+Right)</em></li>
+   <li class="list_item"><code>select-previous-word-start</code> - select-to + previous-word-start - <em>(Ctrl+Shift+Left)</em></li>
+   <li class="list_item"><code>select-next-word-end</code> - select-to + next-word-end - <em>(Ctrl+Shift+Right)</em></li>
    <li class="list_item"><code>select-line-start</code> - select-to + line-start - <em>(Shift+Home)</em></li>
    <li class="list_item"><code>select-line-end</code> - select-to + line-end - <em>(Shift+End)</em></li>
+   <li class="list_item"><code>select-page-up</code> - select-to + page-up - <em>(Shift+PageUp)</em></li>
+   <li class="list_item"><code>select-page-down</code> - select-to + page-down - <em>(Shift+PageDown)</em></li>
    <li class="list_item"><code>select-start</code> - select-to + start - <em>(Ctrl+Shift+Home)</em></li>
    <li class="list_item"><code>select-end</code> - select-to + end - <em>(Ctrl+Shift+End)</em></li>
 </ul>
@@ -145,6 +151,10 @@
   if there is text selected, instead of performing the usual operation
   of moving one character to the left/right, the caret is instead moved to the
   corresponding edge of the selected text and the selection is canceled.
+</p>
+<p>
+  All delete commands should always default to deleting just the current
+  selection if there is a selection active.
 </p>
 
 <h2 id="additional_commands" class="section_header">Additional Commands</h2>
@@ -174,11 +184,11 @@
   <li class="list_item"><code>triple-click</code> - line-granularity</li>
 </ul>
 <p>
-  When the mouse is pressed down the both sides of the selection are
+  When the mouse is pressed down then both sides of the selection are
   set to the current mouse cursor position. If the mouse is then dragged the
   head of the selection is moved to that position while the tail remains in
   place of the original click. If <em>Shift</em> is held when the mouse is
-  clicked the tail of the selection is uneffected and only the head is changed.
+  clicked the tail of the selection is unaffected and only the head is changed.
 </p>
 <p>
   The placement of both sides of the selection are based around the
@@ -186,7 +196,6 @@
   click and drag their mouse it would select a word at a time; if one were
   to triple-click it would select a line at a time.
 </p>
-
 
   </body>
 </html>
